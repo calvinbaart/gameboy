@@ -1,0 +1,4 @@
+/dist/*.js
+/dist/bios/*.bin
+/dist/roms/*.gb
+/node_modules
