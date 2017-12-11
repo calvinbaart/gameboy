@@ -1,36 +1,29 @@
-import * as fs from 'fs';
 import { CPU } from './cpu';
 
-interface MemoryMap {
-    start: number;
-    end: number;
-    read: (position: number, length: number) => Buffer;
-    write: (position: number, buffer: Buffer) => void;
+interface IRegister {
+    read: () => number;
+    write: (value: number) => void;
 }
 
 export class Memory {
     private _cpu: CPU;
     private _raw: Buffer;
-    private _map: Array<MemoryMap>;
+    private _registers: { [key: number]: IRegister };
 
     constructor(cpu: CPU) {
         this._cpu = cpu;
-        this._raw = new Buffer(65536);
-        this._map = [];
+        this._raw = new Buffer(0xFFFF);
+        this._registers = {};
     }
 
-    public mapMemory(start: number, end: number, read: (position: number, length: number) => Buffer, write: (position: number, buffer: Buffer) => void): void {
-        this._map.push({
-            start,
-            end,
+    public addRegister(position: number, read: () => number, write: (value: number) => void): void {
+        this._registers[position] = {
             read,
             write
-        });
+        };
     }
 
-    public mapFile(path: string, position: number): boolean {
-        const buffer = fs.readFileSync(path);
-        
+    public mapBuffer(buffer: Buffer, position: number): boolean {
         if (buffer === null) {
             return false;
         }
@@ -40,133 +33,69 @@ export class Memory {
         return true;
     }
 
-    public readInt8(position: number, skip: boolean = false): number {
-        if (!skip) {
-            for (let map of this._map) {
-                if (position >= map.start && position < map.end) {
-                    const val = map.read(position - map.start, 1);
-                    if (val !== null) {
-                        return val.readInt8(0);
-                    }
-
-                    break;
-                }
-            }
+    public readInt8(position: number): number {
+        if (this._registers[position] !== undefined) {
+            return this._registers[position].read();
         }
 
         return this._raw.readInt8(position);
     }
 
-    public readUint8(position: number, skip: boolean = false): number {
-        if (!skip) {
-            for (let map of this._map) {
-                if (position >= map.start && position < map.end) {
-                    const val = map.read(position - map.start, 1);
-                    if (val !== null) {
-                        return val.readUInt8(0);
-                    }
-
-                    break;
-                }
-            }
+    public readUint8(position: number): number {
+        if (this._registers[position] !== undefined) {
+            return this._registers[position].read();
         }
 
         return this._raw.readUInt8(position);
     }
 
-    public readInt16(position: number, skip: boolean = false): number {
-        if (!skip) {
-            for (let map of this._map) {
-                if (position >= map.start && position < map.end) {
-                    const val = map.read(position - map.start, 1);
-                    if (val !== null) {
-                        return val.readInt16LE(0);
-                    }
-
-                    break;
-                }
-            }
+    public readInt16(position: number): number {
+        if (this._registers[position] !== undefined) {
+            return this._registers[position].read();
         }
 
         return this._raw.readInt16LE(position);
     }
 
-    public readUint16(position: number, skip: boolean = false): number {
-        if (!skip) {
-            for (let map of this._map) {
-                if (position >= map.start && position < map.end) {
-                    const val = map.read(position - map.start, 1);
-                    if (val !== null) {
-                        return val.readUInt16LE(0);
-                    }
-
-                    break;
-                }
-            }
+    public readUint16(position: number): number {
+        if (this._registers[position] !== undefined) {
+            return this._registers[position].read();
         }
 
         return this._raw.readUInt16LE(position);
     }
 
-    public writeInt8(position: number, data: number, skip: boolean = false): void {
-        if (!skip) {
-            for (let map of this._map) {
-                if (position >= map.start && position < map.end) {
-                    const buffer = new Buffer(1);
-                    buffer.writeInt8(data, 0);
-
-                    map.write(position - map.start, buffer);
-                    return;
-                }
-            }
+    public writeInt8(position: number, data: number): void {
+        if (this._registers[position] !== undefined) {
+            this._registers[position].write(data);
+            return;
         }
 
         this._raw.writeInt8(data, position);
     }
 
-    public writeUint8(position: number, data: number, skip: boolean = false): void {
-        if (!skip) {
-            for (let map of this._map) {
-                if (position >= map.start && position < map.end) {
-                    const buffer = new Buffer(1);
-                    buffer.writeUInt8(data, 0);
-
-                    map.write(position - map.start, buffer);
-                    return;
-                }
-            }
+    public writeUint8(position: number, data: number): void {
+        if (this._registers[position] !== undefined) {
+            this._registers[position].write(data);
+            return;
         }
 
         this._raw.writeUInt8(data, position);
     }
 
-    public writeInt16(position: number, data: number, skip: boolean = false): void {
-        if (!skip) {
-            for (let map of this._map) {
-                if (position >= map.start && position < map.end) {
-                    const buffer = new Buffer(2);
-                    buffer.writeInt16LE(data, 0);
-
-                    map.write(position - map.start, buffer);
-                    return;
-                }
-            }
+    public writeInt16(position: number, data: number): void {
+        if (this._registers[position] !== undefined) {
+            this._registers[position].write(data);
+            return;
         }
 
         this._raw.writeInt16LE(data, position);
     }
 
-    public writeUint16(position: number, data: number, skip: boolean = false): void {
-        if (!skip) {
-            for (let map of this._map) {
-                if (position >= map.start && position < map.end) {
-                    const buffer = new Buffer(2);
-                    buffer.writeUInt16LE(data, 0);
-
-                    map.write(position - map.start, buffer);
-                    return;
-                }
-            }
+    public writeUint16(position: number, data: number): void {
+        if (this._registers[position] !== undefined) {
+            this._registers[position].write(data);
+            return;
         }
 
         this._raw.writeUInt16LE(data, position);

@@ -2,3 +2,4 @@
 /dist/bios/*.bin
 /dist/roms/*.gb
 /node_modules
+dist/scripts/main.js

@@ -27,6 +27,7 @@ export class CPU {
     private _registers: Uint8Array;
     private _pc: number;
     private _sp: number;
+    private _cycles: number;
 
     constructor() {
         new Opcodes();
@@ -38,10 +39,16 @@ export class CPU {
         this._registers = new Uint8Array(8);
         this._pc = 0;
         this._sp = 0;
+        this._cycles = 0;
     }
 
     public loadBios(): boolean {
-        return this._memory.mapFile("bios/bios.bin", 0x0000);
+        if (process.env.APP_ENV === "browser") {
+            return this._memory.mapBuffer(require("../file-loader.js!../dist/bios/bios.bin"), 0x0000);
+        }
+
+        let fs = "fs";
+        return this._memory.mapBuffer(require(fs).readFileSync("bios/bios.bin"), 0x0000);
     }
 
     public step(): boolean {
@@ -56,6 +63,8 @@ export class CPU {
             }
 
             _cbopcodes[opcode2](this);
+
+            this.checkInterrupt();
             return true;
         }
 
@@ -66,6 +75,7 @@ export class CPU {
 
         _opcodes[opcode](this);
 
+        this.checkInterrupt();
         return true;
     }
 
@@ -123,6 +133,14 @@ export class CPU {
         this.SP += 2;
 
         return val;
+    }
+
+    public machine_cycle(): void {
+        this._cycles++;
+    }
+
+    public checkInterrupt(): void {
+        // todo
     }
 
     private _log(opcode: number, isCB: boolean = false): void {
@@ -193,8 +211,26 @@ export class CPU {
         return this._memory;
     }
 
+    get Display() {
+        return this._display;
+    }
+
+    get cycles() {
+        return this._cycles;
+    }
+
+    set cycles(val: number) {
+        this._cycles = val;
+    }
+
     set A(val: number) {
-        this._registers[Register.A] = val;
+        this._registers[Register.A] = val % 256;
+
+        if (this._registers[Register.A] === 0) {
+            this.enableFlag(Flags.ZeroFlag);
+        } else {
+            this.disableFlag(Flags.ZeroFlag);
+        }
     }
 
     set F(val: number) {
@@ -202,27 +238,63 @@ export class CPU {
     }
 
     set B(val: number) {
-        this._registers[Register.B] = val;
+        this._registers[Register.B] = val % 256;
+
+        if (this._registers[Register.B] === 0) {
+            this.enableFlag(Flags.ZeroFlag);
+        } else {
+            this.disableFlag(Flags.ZeroFlag);
+        }
     }
 
     set C(val: number) {
-        this._registers[Register.C] = val;
+        this._registers[Register.C] = val % 256;
+
+        if (this._registers[Register.C] === 0) {
+            this.enableFlag(Flags.ZeroFlag);
+        } else {
+            this.disableFlag(Flags.ZeroFlag);
+        }
     }
 
     set D(val: number) {
-        this._registers[Register.D] = val;
+        this._registers[Register.D] = val % 256;
+
+        if (this._registers[Register.D] === 0) {
+            this.enableFlag(Flags.ZeroFlag);
+        } else {
+            this.disableFlag(Flags.ZeroFlag);
+        }
     }
 
     set E(val: number) {
-        this._registers[Register.E] = val;
+        this._registers[Register.E] = val % 256;
+
+        if (this._registers[Register.E] === 0) {
+            this.enableFlag(Flags.ZeroFlag);
+        } else {
+            this.disableFlag(Flags.ZeroFlag);
+        }
     }
     
     set H(val: number) {
-        this._registers[Register.H] = val;
+        this._registers[Register.H] = val % 256;
+
+        if (this._registers[Register.H] === 0) {
+            this.enableFlag(Flags.ZeroFlag);
+        } else {
+            this.disableFlag(Flags.ZeroFlag);
+        }
     }
 
     set L(val: number) {
-        this._registers[Register.L] = val;
+        this._registers[Register.L] = val % 256;
+
+        if (this._registers[Register.L] === 0) {
+            this.enableFlag(Flags.ZeroFlag);
+        } else {
+            this.disableFlag(Flags.ZeroFlag);
+        }
     }
 
     set AF(val: number) {

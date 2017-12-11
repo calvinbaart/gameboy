@@ -1,34 +1,31 @@
 /* eslint-disable no-var, strict, prefer-arrow-callback */
-'use strict';
+"use strict";
 
-var path = require('path');
-
+var path = require("path");
+const webpack = require("webpack");
 
 var babelOptions = {
     "presets": [
         [
-            "es2015",
+            "env",
             {
-                "modules": false
+                "targets": {
+                    "browsers": ["last 2 versions"]
+                }
             }
-        ],
-        "es2016",
-        "es2017"
+        ]
     ]
 };
 
 module.exports = {
     cache: true,
     entry: {
-        main: './src/main.ts',
-        vendor: [
-            'babel-polyfill'
-        ]
+        main: "./src/main.ts"
     },
     output: {
-        path: path.resolve(__dirname, './dist/scripts'),
-        filename: '[name].js',
-        chunkFilename: '[chunkhash].js'
+        path: path.resolve(__dirname, "./dist/scripts"),
+        filename: "[name].js",
+        chunkFilename: "[chunkhash].js"
     },
     module: {
         rules: [{
@@ -36,11 +33,11 @@ module.exports = {
             exclude: /node_modules/,
             use: [
                 {
-                    loader: 'babel-loader',
+                    loader: "babel-loader",
                     options: babelOptions
                 },
                 {
-                    loader: 'ts-loader'
+                    loader: "ts-loader"
                 }
             ]
         }, {
@@ -48,15 +45,21 @@ module.exports = {
             exclude: /node_modules/,
             use: [
                 {
-                    loader: 'babel-loader',
+                    loader: "babel-loader",
                     options: babelOptions
                 }
             ]
         }]
     },
     plugins: [
+        new webpack.DefinePlugin({
+            "process.env": {
+                NODE_ENV: JSON.stringify("production"),
+                APP_ENV: JSON.stringify("browser")
+            }
+        })
     ],
     resolve: {
-        extensions: ['.ts', '.js']
+        extensions: [".ts", ".js"]
     },
 };
