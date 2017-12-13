@@ -6,18 +6,33 @@ const GameboyColorPalette = [
 
 let global: any = {};
 if (process.env.APP_ENV !== "browser") {
+    class ImageData {
+        public data: Uint8ClampedArray = new Uint8ClampedArray(160 * 144 * 4);
+        public width: number;
+        public height: number;
+    }
+
     class CanvasContext2D {
         public fillStyle = "";
         
         public fillRect(x, y, w, h) {
 
         }
-    }
 
+        public createImageData(width, height) {
+            return new ImageData();
+        }
+
+        public putImageData(data, x, y) {
+
+        }
+    }
+    
     type CanvasContext = CanvasContext2D;
 
     interface ICanvas {
         getContext: (type: string) => CanvasContext;
+        style: any;
     }
 
     global = {
@@ -25,6 +40,10 @@ if (process.env.APP_ENV !== "browser") {
             return {
                 getContext: (type: string): CanvasContext => {
                     return new CanvasContext2D();
+                },
+                style: {
+                    width: 0,
+                    height: 0
                 }
             };
         },
@@ -66,21 +85,22 @@ export class Display {
     private _cpu: CPU;
     private _registers: Uint8Array;
     private _context;
+    private _data;
 
     private _backgroundTilemap: number;
     private _windowTilemap: number;
     private _activeTileset: number;
-    private _framebuffer: Uint8Array;
+    private _framebuffer: Uint8ClampedArray;
+    private _cycles: number;
+    private _cyclesExtra: number;
+    private _vblank: number;
 
     constructor(cpu: CPU) {
         this._cpu = cpu;
-        this._framebuffer = new Uint8Array(160 * 144 * 4);
         this._registers = new Uint8Array(0x0B);
-        this._registers[DisplayRegister.LY] = 0x90; //force vblank until we emulate this correctly
-        
-        for (let i = 0; i < this._framebuffer.length; i++) {
-            this._framebuffer[i] = 255;
-        }
+        this._cycles = 0;
+        this._cyclesExtra = 0;
+        this._vblank = 0;
 
         this._cpu.MMU.addRegister(0xFF40, this._readRegister.bind(this, DisplayRegister.LCDC), this._writeRegister.bind(this, DisplayRegister.LCDC));
         this._cpu.MMU.addRegister(0xFF41, this._readRegister.bind(this, DisplayRegister.STAT), this._writeRegister.bind(this, DisplayRegister.STAT));
@@ -96,13 +116,27 @@ export class Display {
         this._cpu.MMU.addRegister(0xFF4B, this._readRegister.bind(this, DisplayRegister.WX), this._writeRegister.bind(this, DisplayRegister.WX));
 
         const tmp = global.createElement("canvas");
+        tmp.style.width = "160px";
+        tmp.style.height = "144px";
+        tmp.width = 160;
+        tmp.height = 144;
         this._context = tmp.getContext("2d");
         this._context.fillStyle = "#dddddd";
         this._context.fillRect(0, 0, 160, 144);
+        this._data = this._context.createImageData(160, 144);
+        this._framebuffer = this._data.data;
+
+        for (let i = 0; i < (160 * 144 * 4); i += 4) {
+            this._framebuffer[i + 0] = 235;
+            this._framebuffer[i + 1] = 235;
+            this._framebuffer[i + 2] = 235;
+            this._framebuffer[i + 3] = 255;
+        }
+
         global.body.appendChild(tmp);
     }
 
-    public render() {
+    public tick() {
         const control = this._readRegister(DisplayRegister.LCDC);
 
         if (!(control & (1 << 7))) {
@@ -112,35 +146,57 @@ export class Display {
         this._backgroundTilemap = (control & (1 << 3)) ? 1 : 0;
         this._windowTilemap = (control & (1 << 6)) ? 1 : 0;
         this._activeTileset = (control & (1 << 4)) ? 1 : 0;
+        this._cycles += 4;
+        this._cyclesExtra += 4;
 
         switch (this.mode) {
             case DisplayMode.ReadingOAM:
-                this.mode = DisplayMode.ReadingOAMVRAM;
+                if (this._cycles >= 77) {
+                    this._cycles -= 77;
+                    this.mode = DisplayMode.ReadingOAMVRAM;
+                }
+
                 break;
-            
+        
             case DisplayMode.ReadingOAMVRAM:
                 this._renderScanline();
-                this.mode = DisplayMode.HBlank;
+
+                if (this._cycles >= 169) {
+                    this._cycles -= 169;
+                    this.mode = DisplayMode.HBlank;
+                }
+
                 break;
-            
+        
             case DisplayMode.HBlank:
-                this.LY++;
+                if (this._cycles >= 201) {
+                    this._cycles -= 201;
+                    this.LY++;
+                    this._renderScanline();
 
-                if (this.LY === 144) {
-                    this._render();
-                } else {
-                    this.mode = DisplayMode.ReadingOAM;
+                    if (this.LY === 144) {
+                        this._render();
+                        this._vblank = 0;
+
+                        this.mode = DisplayMode.VBlank;
+                    } else {
+                        this.mode = DisplayMode.ReadingOAM;
+                    }
                 }
 
                 break;
-            
+        
             case DisplayMode.VBlank:
-                this.LY++;
+                while (this._cyclesExtra > 456) {
+                    this._cyclesExtra -= 456;
+                    this._vblank++;
+                }
 
-                if (this.LY === 154) {
-                    this.LY = 0;
+                if (this._cycles >= 4560) {
+                    this._cycles -= 4560;
                     this.mode = DisplayMode.ReadingOAM;
                 }
+
                 break;
         }
 
@@ -154,8 +210,10 @@ export class Display {
     }
 
     private _renderScanline(): void {
-        const tileY = (((this.LY + this.SCY) / 8) % 32);
-        const tileYOffset = ((this.LY + this.SCY) % 8);
+        const _y = this.LY;
+
+        const tileY = (Math.floor(_y / 8) % 32);
+        const tileYOffset = _y % 8;
 
         let base = 0x9800;
 
@@ -163,98 +221,45 @@ export class Display {
             base = 0x9C00;
         }
 
-        for (let x = 0; x < 160; x++) {
-            const tileX = (((this.SCX + x) / 8) % 32);
-            const tileIndex = this._cpu.MMU.readUint8(base + (tileY * 32) + x);
+        for (let x = 0; x < 20; x++) {
+            const tileX = x;
+            let tileIndex = this._cpu.MMU.read8(base + (tileY * 32) + tileX);
+            let tileBase = 0x8800;
 
-            let addr = this._activeTileset === 0 ? this._getTileAddress0(tileIndex) : this._getTileAddress1(tileIndex);
+            if (this._activeTileset === 1) {
+                tileBase = 0x8000;
+            }
 
-            const byte1 = this._cpu.MMU.readUint8(addr);
-            const byte2 = this._cpu.MMU.readUint8(addr + 1);
+            let addr = tileBase + (tileIndex * 16);
 
-            const bit = 7 - ((this.SCX + x) % 8);
-            const lo = (byte1 & (1 << bit)) ? 0x01 : 0x00;
-            const hi = (byte2 & (1 << bit)) ? 0x02 : 0x00;
+            let ty = _y - (tileY * 8);
+            const byte1 = this._cpu.MMU.read8(addr + (2 * ty));
+            const byte2 = this._cpu.MMU.read8(addr + (2 * ty) + 1);
 
-            // console.log(hi, lo, byte1 & (1 << bit), byte2 & (1 << bit), bit);
+            for (let tx = 0; tx < 8; tx++) {
+                const bit = 7 - tx;
+                const lo = (byte2 & (1 << bit)) ? 0x01 : 0x00;
+                const hi = (byte1 & (1 << bit)) ? 0x02 : 0x00;
 
-            let color = GameboyColorPalette[lo + hi];
-            let index = ((this.LY * 160) + x) * 4;
-            this._framebuffer[index + 3] = color;
-            this._framebuffer[index + 2] = color;
-            this._framebuffer[index + 1] = color;
-            this._framebuffer[index + 0] = 0xFF;
+                let _tx = (tileX * 8 + tx + this.SCX) % 256;
+                let _ty = (tileY * 8 + ty + (256 - this.SCY)) % 256;
+
+                let color = GameboyColorPalette[lo + hi];
+                let index = ((_ty * 160) + _tx) * 4;
+
+                this._framebuffer[index + 0] = color;
+                this._framebuffer[index + 1] = color;
+                this._framebuffer[index + 2] = color;
+                this._framebuffer[index + 3] = 255;
+            }
         }
     }
 
     private _render(): void {
-        for (let i = 0; i < this._framebuffer.length; i += 4) {
-            let y = Math.floor((i / 4) / 160);
-            let x = (i / 4) - (y * 160);
-
-            let r = this._framebuffer[i].toString(16);
-            let g = this._framebuffer[i].toString(16);
-            let b = this._framebuffer[i].toString(16);
-
-            while (r.length < 2) {
-                r = "0" + r;
-            }
-
-            while (g.length < 2) {
-                g = "0" + g;
-            }
-
-            while (b.length < 2) {
-                b = "0" + b;
-            }
-
-            this._context.fillStyle = "#" + r + g + b;
-            this._context.fillRect(x, y, 1, 1);
-        }
-    }
-
-    private _renderBackgroundTile(x, y) {
-        let base = 0x9800;
-
-        if (this._backgroundTilemap === 1) {
-            base = 0x9C00;
-        }
-        
-        let index = this._cpu.MMU.readUint8(base + (y * 32) + x);
-        let addr = this._activeTileset === 1 ? this._getTileAddress0(index) : this._getTileAddress1(index);
-        let data = this._cpu.MMU.readBuffer(addr, 16);
-
-        for (let i = 0; i < 8; i++) {
-            const byte1 = data.readUInt8(i * 2);
-            const byte2 = data.readUInt8(i * 2);
-
-            if (byte1 !== 0 || byte2 !== 0) {
-                this._context.fillStyle = "#000000";
-                this._context.fillRect((x * 8) + i, y * 8, 1, 8);
-            }
-        }
-    }
-
-    private _getTileAddress0(tile) {
-        const memoryRegion = 0x8000;
-        const sizeOfTileInMemory = 16;
-
-        return memoryRegion + (tile * sizeOfTileInMemory); 
-    }
-
-    private _getTileAddress1(tile) {
-        const memoryRegion = 0x8800;
-        const sizeOfTileInMemory = 16;
-        const offset = 128;
-
-        return memoryRegion + ((tile + offset) * sizeOfTileInMemory); 
+        this._context.putImageData(this._data, 0, 0);
     }
 
     private _readRegister(register: DisplayRegister): number {
-        if (register === DisplayRegister.LY) {
-            return 0x90;
-        }
-
         return this._registers[register];
     }
 

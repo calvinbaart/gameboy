@@ -10,6 +10,10 @@ export enum Flags {
     Unused = 0b00001111
 }
 
+export enum InterruptType {
+    VBlank
+}
+
 export enum Register {
     A = 0,
     B = 2,
@@ -28,6 +32,9 @@ export class CPU {
     private _pc: number;
     private _sp: number;
     private _cycles: number;
+    private _checkZero: boolean;
+    private _retStack: number[];
+    private _enableInterrupts: boolean;
 
     constructor() {
         new Opcodes();
@@ -35,11 +42,15 @@ export class CPU {
 
         this._memory = new Memory(this);
         this._display = new Display(this);
-        
+        this._retStack = [];
+
         this._registers = new Uint8Array(8);
         this._pc = 0;
         this._sp = 0;
         this._cycles = 0;
+
+        this._checkZero = true;
+        this._enableInterrupts = true;
     }
 
     public loadBios(): boolean {
@@ -51,11 +62,26 @@ export class CPU {
         return this._memory.mapBuffer(require(fs).readFileSync("bios/bios.bin"), 0x0000);
     }
 
+    public loadRom(): boolean {
+        if (process.env.APP_ENV === "browser") {
+            return this._memory.mapBuffer(require("../file-loader.js!../dist/roms/cpu_instrs.gb").slice(0x100), 0x100);
+        }
+
+        let fs = "fs";
+        return this._memory.mapBuffer(require(fs).readFileSync("roms/cpu_instrs.gb").slice(0x100), 0x100);
+    }
+
     public step(): boolean {
-        const opcode = this.readUint8();
+        if (this.PC === 0x00fa) {
+            this.PC = 0x00fc;
+        }
+
+        const opcode = this.readu8();
+        this.machine_cycle();
 
         if (opcode === 0xCB) {
-            const opcode2 = this.readUint8();
+            const opcode2 = this.readu8();
+            this.machine_cycle();
 
             if (_cbopcodes[opcode2] === undefined) {
                 this._log(opcode2, true);
@@ -79,32 +105,32 @@ export class CPU {
         return true;
     }
 
-    public readUint8(): number {
-        const result = this.MMU.readUint8(this.PC);
+    public readu8(): number {
+        const result = this.MMU.read8(this.PC);
         this.PC++;
 
         return result;
     }
 
-    public readInt8(): number {
-        const result = this.MMU.readInt8(this.PC);
-        this.PC++;
+    public reads8(): number {
+        let num_unsigned = this.readu8();
+        let msb_mask = 1 << (8 - 1);
 
-        return result;
+        return (num_unsigned ^ msb_mask) - msb_mask;
     }
 
-    public readUint16(): number {
-        const result = this.MMU.readUint16(this.PC);
-        this.PC += 2;
+    public readu16(): number {
+        const result1 = this.readu8();
+        const result2 = this.readu8();
 
-        return result;
+        return (result2 << 8) | result1;
     }
 
-    public readInt16(): number {
-        const result = this.MMU.readInt16(this.PC);
-        this.PC += 2;
+    public reads16(): number {
+        let num_unsigned = this.readu16();
+        let msb_mask = 1 << (16 - 1);
 
-        return result;
+        return (num_unsigned ^ msb_mask) - msb_mask;
     }
 
     public enableFlag(flag: Flags): void {
@@ -123,23 +149,41 @@ export class CPU {
         this.F = 0;
     }
 
+    public pushRet(val: number): void {
+        this._retStack.push(val);
+    }
+
+    public popRet(): number {
+        return this._retStack.pop();
+    }
+
     public pushStack(val: number): void {
-        this.SP -= 2;
-        this.MMU.writeInt16(this.SP, val);
+        this.SP -= 1;
+        this.MMU.write8(this.SP, val & 0xFF);
+        this.SP -= 1;
+        this.MMU.write8(this.SP, val >> 8);
     }
 
     public popStack(): number {
-        const val = this.MMU.readInt16(this.SP);
-        this.SP += 2;
+        const val1 = this.MMU.read8(this.SP);
+        this.SP++;
+        const val2 = this.MMU.read8(this.SP);
+        this.SP++;
 
-        return val;
+        return (val1 << 8) | val2;
     }
 
     public machine_cycle(): void {
         this._cycles++;
+
+        this._display.tick();
     }
 
     public checkInterrupt(): void {
+        // todo
+    }
+
+    public triggerInterrupt(interrupt: InterruptType): void {
         // todo
     }
 
@@ -151,12 +195,28 @@ export class CPU {
         }
     }
 
+    get checkZero() {
+        return this._checkZero;
+    }
+
+    set checkZero(val: boolean) {
+        this._checkZero = val;
+    }
+
+    get enableInterrupts() {
+        return this._enableInterrupts;
+    }
+
+    set enableInterrupts(val: boolean) {
+        this._enableInterrupts = val;
+    }
+
     get A() {
         return this._registers[Register.A];
     }
 
     get B() {
-        return this._registers[Register.B]
+        return this._registers[Register.B];
     }
 
     get C() {
@@ -224,12 +284,20 @@ export class CPU {
     }
 
     set A(val: number) {
-        this._registers[Register.A] = val % 256;
+        this._registers[Register.A] = val & 0xFF;
 
-        if (this._registers[Register.A] === 0) {
-            this.enableFlag(Flags.ZeroFlag);
+        if (this.checkZero) {
+            if (this._registers[Register.A] === 0) {
+                this.enableFlag(Flags.ZeroFlag);
+            } else {
+                this.disableFlag(Flags.ZeroFlag);
+            }
+        }    
+
+        if ((this._registers[Register.A] & 0xF) == 0) {
+            this.enableFlag(Flags.HalfCarryFlag);
         } else {
-            this.disableFlag(Flags.ZeroFlag);
+            this.disableFlag(Flags.HalfCarryFlag);
         }
     }
 
@@ -238,62 +306,110 @@ export class CPU {
     }
 
     set B(val: number) {
-        this._registers[Register.B] = val % 256;
+        this._registers[Register.B] = val;
 
-        if (this._registers[Register.B] === 0) {
-            this.enableFlag(Flags.ZeroFlag);
+        if (this.checkZero) {
+            if (this._registers[Register.B] === 0) {
+                this.enableFlag(Flags.ZeroFlag);
+            } else {
+                this.disableFlag(Flags.ZeroFlag);
+            }
+        }    
+
+        if ((this._registers[Register.B] & 0xF) == 0) {
+            this.enableFlag(Flags.HalfCarryFlag);
         } else {
-            this.disableFlag(Flags.ZeroFlag);
+            this.disableFlag(Flags.HalfCarryFlag);
         }
     }
 
     set C(val: number) {
-        this._registers[Register.C] = val % 256;
+        this._registers[Register.C] = val & 0xFF;
 
-        if (this._registers[Register.C] === 0) {
-            this.enableFlag(Flags.ZeroFlag);
+        if (this.checkZero) {
+            if (this._registers[Register.C] === 0) {
+                this.enableFlag(Flags.ZeroFlag);
+            } else {
+                this.disableFlag(Flags.ZeroFlag);
+            }
+        }    
+
+        if ((this._registers[Register.C] & 0xF) == 0) {
+            this.enableFlag(Flags.HalfCarryFlag);
         } else {
-            this.disableFlag(Flags.ZeroFlag);
+            this.disableFlag(Flags.HalfCarryFlag);
         }
     }
 
     set D(val: number) {
-        this._registers[Register.D] = val % 256;
+        this._registers[Register.D] = val & 0xFF;
 
-        if (this._registers[Register.D] === 0) {
-            this.enableFlag(Flags.ZeroFlag);
+        if (this.checkZero) {
+            if (this._registers[Register.D] === 0) {
+                this.enableFlag(Flags.ZeroFlag);
+            } else {
+                this.disableFlag(Flags.ZeroFlag);
+            }
+        }    
+
+        if ((this._registers[Register.D] & 0xF) == 0) {
+            this.enableFlag(Flags.HalfCarryFlag);
         } else {
-            this.disableFlag(Flags.ZeroFlag);
+            this.disableFlag(Flags.HalfCarryFlag);
         }
     }
 
     set E(val: number) {
-        this._registers[Register.E] = val % 256;
+        this._registers[Register.E] = val & 0xFF;
 
-        if (this._registers[Register.E] === 0) {
-            this.enableFlag(Flags.ZeroFlag);
+        if (this.checkZero) {
+            if (this._registers[Register.E] === 0) {
+                this.enableFlag(Flags.ZeroFlag);
+            } else {
+                this.disableFlag(Flags.ZeroFlag);
+            }
+        }    
+
+        if ((this._registers[Register.E] & 0xF) == 0) {
+            this.enableFlag(Flags.HalfCarryFlag);
         } else {
-            this.disableFlag(Flags.ZeroFlag);
+            this.disableFlag(Flags.HalfCarryFlag);
         }
     }
     
     set H(val: number) {
-        this._registers[Register.H] = val % 256;
+        this._registers[Register.H] = val & 0xFF;
 
-        if (this._registers[Register.H] === 0) {
-            this.enableFlag(Flags.ZeroFlag);
+        if (this.checkZero) {
+            if (this._registers[Register.H] === 0) {
+                this.enableFlag(Flags.ZeroFlag);
+            } else {
+                this.disableFlag(Flags.ZeroFlag);
+            }
+        }    
+
+        if ((this._registers[Register.H] & 0xF) == 0) {
+            this.enableFlag(Flags.HalfCarryFlag);
         } else {
-            this.disableFlag(Flags.ZeroFlag);
+            this.disableFlag(Flags.HalfCarryFlag);
         }
     }
 
     set L(val: number) {
-        this._registers[Register.L] = val % 256;
+        this._registers[Register.L] = val & 0xFF;
 
-        if (this._registers[Register.L] === 0) {
-            this.enableFlag(Flags.ZeroFlag);
+        if (this.checkZero) {
+            if (this._registers[Register.L] === 0) {
+                this.enableFlag(Flags.ZeroFlag);
+            } else {
+                this.disableFlag(Flags.ZeroFlag);
+            }
+        }    
+
+        if ((this._registers[Register.L] & 0xF) == 0) {
+            this.enableFlag(Flags.HalfCarryFlag);
         } else {
-            this.disableFlag(Flags.ZeroFlag);
+            this.disableFlag(Flags.HalfCarryFlag);
         }
     }
 
@@ -308,7 +424,7 @@ export class CPU {
     }
 
     set DE(val: number) {
-        this._registers[Register.B] = val >> 8;
+        this._registers[Register.D] = val >> 8;
         this._registers[Register.E] = val & 0xFF;
     }
 

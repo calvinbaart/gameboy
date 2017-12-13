@@ -6,11 +6,16 @@ if (!cpu.loadBios()) {
     process.exit(0);
 }
 
+if (!cpu.loadRom()) {
+    console.log("Failed to load rom");
+    process.exit(0);
+}
+
 let global: any = {};
 if (process.env.APP_ENV !== "browser") {
     global = {
         requestAnimationFrame: function (callback) {
-            return setTimeout(callback, 1 / 60);
+            return setTimeout(callback, (1.0 / 60) * 1000);
         }
     };
 } else {
@@ -19,29 +24,27 @@ if (process.env.APP_ENV !== "browser") {
 
 let stopEmulation = false;
 const loop = () => {
-    const cycles = 3000;//Math.floor(4194304 / 60);
+    const cycles = Math.floor((4194304 / 60) / 4);
 
     if (stopEmulation) {
-        cpu.Display.render();
-        window.requestAnimationFrame(loop);
+        for (let i = 0; i < cycles; i++) {
+            cpu.Display.tick();
+        }
+
+        global.requestAnimationFrame(loop);
 
         return;
     }
 
-    // while (cpu.cycles < cycles) {
-    for (let i = 0; i < cycles / 8; i++) {
+    while (cpu.cycles < cycles) {
         if (!cpu.step()) {
             stopEmulation = true;
-            return;
+            break;
         }
-
-        cpu.Display.render();
     }
-    // }
 
-    cpu.Display.render();
-    // cpu.cycles -= cycles;
-    window.requestAnimationFrame(loop);
+    cpu.cycles -= cycles;
+    global.requestAnimationFrame(loop);
 };
 
-window.requestAnimationFrame(loop);
+global.requestAnimationFrame(loop);

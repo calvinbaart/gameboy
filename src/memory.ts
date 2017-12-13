@@ -7,13 +7,23 @@ interface IRegister {
 
 export class Memory {
     private _cpu: CPU;
-    private _raw: Buffer;
+    private _raw: Uint8Array;
     private _registers: { [key: number]: IRegister };
 
     constructor(cpu: CPU) {
         this._cpu = cpu;
-        this._raw = new Buffer(0xFFFF);
+        this._raw = new Uint8Array(0xFFFF);
         this._registers = {};
+
+        this.addRegister(0xFF02, () => {
+            return 0;
+        }, (value: number) => {
+            if (value === 0x81) {
+                //debug port
+
+                console.log(String.fromCharCode(this.read8(0xFF01)));
+            }
+        });
     }
 
     public addRegister(position: number, read: () => number, write: (value: number) => void): void {
@@ -28,84 +38,29 @@ export class Memory {
             return false;
         }
 
-        buffer.copy(this._raw, position, 0, buffer.length);
+        for (let i = 0; i < buffer.length; i++) {
+            this._raw[position + i] = buffer.readUInt8(i);
+        }
 
         return true;
     }
 
-    public readInt8(position: number): number {
+    public read8(position: number): number {
         if (this._registers[position] !== undefined) {
             return this._registers[position].read();
         }
 
-        return this._raw.readInt8(position);
+        return this._raw[position];
     }
 
-    public readUint8(position: number): number {
-        if (this._registers[position] !== undefined) {
-            return this._registers[position].read();
-        }
-
-        return this._raw.readUInt8(position);
-    }
-
-    public readInt16(position: number): number {
-        if (this._registers[position] !== undefined) {
-            return this._registers[position].read();
-        }
-
-        return this._raw.readInt16LE(position);
-    }
-
-    public readUint16(position: number): number {
-        if (this._registers[position] !== undefined) {
-            return this._registers[position].read();
-        }
-
-        return this._raw.readUInt16LE(position);
-    }
-
-    public writeInt8(position: number, data: number): void {
+    public write8(position: number, data: number): void {
         if (this._registers[position] !== undefined) {
             this._registers[position].write(data);
             return;
         }
 
-        this._raw.writeInt8(data, position);
-    }
+        // if (aAddress == 0xFF02 && aValue == 0x81) { dbgStringBuilder.Append((char)Read8(0xFF01)); }
 
-    public writeUint8(position: number, data: number): void {
-        if (this._registers[position] !== undefined) {
-            this._registers[position].write(data);
-            return;
-        }
-
-        this._raw.writeUInt8(data, position);
-    }
-
-    public writeInt16(position: number, data: number): void {
-        if (this._registers[position] !== undefined) {
-            this._registers[position].write(data);
-            return;
-        }
-
-        this._raw.writeInt16LE(data, position);
-    }
-
-    public writeUint16(position: number, data: number): void {
-        if (this._registers[position] !== undefined) {
-            this._registers[position].write(data);
-            return;
-        }
-
-        this._raw.writeUInt16LE(data, position);
-    }
-
-    public readBuffer(position: number, length: number): Buffer {
-        return this._raw.slice(position, position + length);
-    }
-
-    public writeBuffer(position: number, buffer: Buffer) {
-        buffer.copy(this._raw, position, 0, buffer.length);
+        this._raw[position] = data;
     }
 }
