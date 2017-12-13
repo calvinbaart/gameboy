@@ -23,9 +23,9 @@ export function Opcode(opcode: number, type: OpcodeType = OpcodeType.Default) {
 }
 
 const debug = (name: string, args: { [key: string]: number }, values: { [key: string]: number }, cpu: CPU): void => {
-    // if (process.env.APP_ENV === "browser") {
-    //     return;
-    // }
+    if (process.env.APP_ENV === "browser") {
+        return;
+    }
     
     if (cpu.PC < 0x100) {
         return;
@@ -102,6 +102,14 @@ const debug = (name: string, args: { [key: string]: number }, values: { [key: st
 
 function XOR(num: number, cpu: CPU): void {
     cpu.A = cpu.A ^ num;
+}
+
+function OR(num: number, cpu: CPU): void {
+    cpu.A = cpu.A | num;
+}
+
+function AND(num: number, cpu: CPU): void {
+    cpu.A = cpu.A & num;
 }
 
 function RL(register: string, zeroCheck: boolean, cpu: CPU): void {
@@ -217,7 +225,7 @@ function LD_8_r2_r1(r1: string, r2: string, cpu: CPU): void {
     cpu[r1] = cpu[r2];
 }
 
-function SUB(register: string, cpu: CPU): void {
+function SUB(register: string | number, cpu: CPU): void {
     if (register === null) {
         let tmp = cpu.MMU.read8(cpu.HL);
 
@@ -227,17 +235,21 @@ function SUB(register: string, cpu: CPU): void {
         cpu.machine_cycle();
 
         return;
+    } else if (typeof register === "string") {
+        debug("SUB", { "n": 0 }, { "n": cpu[register] }, cpu);
+
+        cpu.A -= cpu[register];
+    } else {
+        debug("SUB", { "n": 0 }, { "n": register }, cpu);
+
+        cpu.A -= register as number;
     }
-
-    debug("SUB", { "n": 0 }, { "n": cpu[register] }, cpu);
-
-    cpu.A -= cpu[register];
 
     // todo:   H - Set if no borrow from bit 4.
     //         C - Set if no borrow
 }
 
-function ADD(register: string, cpu: CPU): void {
+function ADD(register: string | number, cpu: CPU): void {
     cpu.disableFlag(Flags.HalfCarryFlag);
 
     let val = 0;
@@ -246,10 +258,14 @@ function ADD(register: string, cpu: CPU): void {
         cpu.machine_cycle();
 
         debug("ADD", { "(HL)": 1 }, { "(HL)": val }, cpu);
-    } else {
+    } else if(typeof register === "string") {
         val = cpu[register];
 
         debug("ADD", { register: 1 }, { register: val }, cpu);
+    } else {
+        val = register as number;
+
+        debug("ADD", { "n": 1 }, { "n": val }, cpu);
     }
 
     cpu.A += val;
@@ -546,11 +562,41 @@ export class Opcodes {
         LD_8_r2_r1("B", "D", cpu);
     }
 
+    @Opcode(0x46)
+    public static LD_0x46(cpu: CPU): void {
+        const val = cpu.MMU.read8(cpu.HL);
+
+        debug("LD", { "B": 0, "(HL)": 0 }, { "(HL)": val }, cpu);
+
+        cpu.B = val;
+        cpu.machine_cycle();
+    }
+
+    @Opcode(0x4E)
+    public static LD_0x4E(cpu: CPU): void {
+        const val = cpu.MMU.read8(cpu.HL);
+
+        debug("LD", { "C": 0, "(HL)": 0 }, { "(HL)": val }, cpu);
+
+        cpu.C = val;
+        cpu.machine_cycle();
+    }
+
     @Opcode(0x4F)
     public static LD_0x4F(cpu: CPU): void {
         debug("LD", { "C": 0, "A": 0 }, { "A": cpu.A }, cpu);
 
         cpu.C = cpu.A;
+    }
+
+    @Opcode(0x56)
+    public static LD_0x56(cpu: CPU): void {
+        const val = cpu.MMU.read8(cpu.HL);
+
+        debug("LD", { "D": 0, "(HL)": 0 }, { "(HL)": val }, cpu);
+
+        cpu.D = val;
+        cpu.machine_cycle();
     }
 
     @Opcode(0x57)
@@ -662,11 +708,77 @@ export class Opcodes {
         SUB("A", cpu);
     }
 
+    @Opcode(0xA9)
+    public static XOR_0xA9(cpu: CPU): void {
+        debug("XOR", { "C": 0 }, { "C": cpu.C }, cpu);
+
+        XOR(cpu.C, cpu);
+    }
+
+    @Opcode(0xAE)
+    public static XOR_0xAE(cpu: CPU): void {
+        const val = cpu.MMU.read8(cpu.HL);
+        cpu.machine_cycle();
+
+        debug("XOR", { "n": 0 }, { "n": val }, cpu);
+
+        XOR(val, cpu);
+    }
+
     @Opcode(0xAF)
     public static XOR_0xAF(cpu: CPU): void {
         debug("XOR", { "A": 0 }, { "A": cpu.A }, cpu);
 
         XOR(cpu.A, cpu);
+    }
+
+    @Opcode(0xB0)
+    public static OR_0xB0(cpu: CPU): void {
+        debug("OR", { "B": 0 }, { "B": cpu.B }, cpu);
+
+        OR(cpu.B, cpu);
+    }
+
+    @Opcode(0xB1)
+    public static OR_0xB1(cpu: CPU): void {
+        debug("OR", { "C": 0 }, { "C": cpu.C }, cpu);
+
+        OR(cpu.C, cpu);
+    }
+
+    @Opcode(0xB2)
+    public static OR_0xB2(cpu: CPU): void {
+        debug("OR", { "D": 0 }, { "D": cpu.D }, cpu);
+
+        OR(cpu.D, cpu);
+    }
+
+    @Opcode(0xB3)
+    public static OR_0xB3(cpu: CPU): void {
+        debug("OR", { "E": 0 }, { "E": cpu.E }, cpu);
+
+        OR(cpu.E, cpu);
+    }
+
+    @Opcode(0xB4)
+    public static OR_0xB4(cpu: CPU): void {
+        debug("OR", { "H": 0 }, { "H": cpu.H }, cpu);
+
+        OR(cpu.H, cpu);
+    }
+
+    @Opcode(0xB5)
+    public static OR_0xB5(cpu: CPU): void {
+        debug("OR", { "L": 0 }, { "L": cpu.L }, cpu);
+
+        OR(cpu.L, cpu);
+    }
+
+    @Opcode(0xB7)
+    public static OR_0xB7(cpu: CPU): void {
+        debug("OR", { "A": 0 }, { "A": cpu.A }, cpu);
+
+        OR(cpu.A, cpu);
     }
 
     @Opcode(0xBE)
@@ -712,6 +824,20 @@ export class Opcodes {
         cpu.machine_cycle();
     }
 
+    @Opcode(0xC4)
+    public static CALL_0xC4(cpu: CPU): void {
+        const addr = cpu.readu16();
+
+        debug("CALL", { "NZ": 0, "nn": 2 }, { "nn": addr }, cpu);
+
+        if (!cpu.isFlagSet(Flags.ZeroFlag)) {
+            cpu.PC = addr;
+            cpu.machine_cycle();
+        }
+
+        cpu.machine_cycle();
+    }
+
     @Opcode(0xC5)
     public static PUSH_0xC5(cpu: CPU): void {
         debug("PUSH", { "BC": 0 }, {}, cpu);
@@ -720,6 +846,11 @@ export class Opcodes {
         cpu.machine_cycle();
         cpu.machine_cycle();
         cpu.machine_cycle();
+    }
+
+    @Opcode(0xC6)
+    public static ADD_0xC6(cpu: CPU): void {
+        ADD(cpu.readu8(), cpu);
     }
 
     @Opcode(0xC9)
@@ -770,6 +901,11 @@ export class Opcodes {
         cpu.machine_cycle();
     }
 
+    @Opcode(0xD6)
+    public static SUB_0xD6(cpu: CPU): void {
+        SUB(cpu.readu8(), cpu);
+    }
+
     @Opcode(0xE0)
     public static LDH_0xE0(cpu: CPU): void {
         const pos = 0xFF00 + cpu.readu8();
@@ -806,6 +942,14 @@ export class Opcodes {
         cpu.machine_cycle();
         cpu.machine_cycle();
         cpu.machine_cycle();
+    }
+
+    @Opcode(0xE6)
+    public static AND_0xE6(cpu: CPU): void {
+        const val = cpu.readu8();
+        debug("AND", { "n": 1 }, { "n": val }, cpu);
+
+        AND(val, cpu);
     }
 
     @Opcode(0xEA)
@@ -851,6 +995,18 @@ export class Opcodes {
         cpu.pushStack(cpu.AF);
         cpu.machine_cycle();
         cpu.machine_cycle();
+        cpu.machine_cycle();
+    }
+
+    @Opcode(0xFA)
+    public static LD_0xFA(cpu: CPU): void {
+        const addr = cpu.readu16();
+        cpu.machine_cycle();
+        cpu.machine_cycle();
+
+        debug("LD", { "A": 0, "nn": 2 }, { "nn": addr }, cpu);
+
+        cpu.A = cpu.MMU.read8(addr);
         cpu.machine_cycle();
     }
 
