@@ -136,7 +136,7 @@ export class Display {
         global.body.appendChild(tmp);
     }
 
-    public tick() {
+    public tick(delta: number) {
         const control = this._readRegister(DisplayRegister.LCDC);
 
         if (!(control & (1 << 7))) {
@@ -146,8 +146,8 @@ export class Display {
         this._backgroundTilemap = (control & (1 << 3)) ? 1 : 0;
         this._windowTilemap = (control & (1 << 6)) ? 1 : 0;
         this._activeTileset = (control & (1 << 4)) ? 1 : 0;
-        this._cycles += 4;
-        this._cyclesExtra += 4;
+        this._cycles += delta;
+        this._cyclesExtra += delta;
 
         switch (this.mode) {
             case DisplayMode.ReadingOAM:

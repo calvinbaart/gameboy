@@ -72,24 +72,20 @@ export class CPU {
     }
 
     public step(): boolean {
-        if (this.PC === 0x00fa) {
-            this.PC = 0x00fc;
-        }
-
         const opcode = this.readu8();
-        this.machine_cycle();
 
         if (opcode === 0xCB) {
             const opcode2 = this.readu8();
-            this.machine_cycle();
 
             if (_cbopcodes[opcode2] === undefined) {
                 this._log(opcode2, true);
                 return false;
             }
 
-            _cbopcodes[opcode2](this);
+            _cbopcodes[opcode2][1](this);
 
+            this._cycles += _cbopcodes[opcode2][0];
+            this._display.tick(_cbopcodes[opcode2][0]);
             this.checkInterrupt();
             return true;
         }
@@ -99,8 +95,10 @@ export class CPU {
             return false;
         }
 
-        _opcodes[opcode](this);
+        _opcodes[opcode][1](this);
 
+        this._cycles += _opcodes[opcode][0];
+        this._display.tick(_opcodes[opcode][0]);
         this.checkInterrupt();
         return true;
     }
@@ -171,12 +169,6 @@ export class CPU {
         this.SP++;
 
         return (val1 << 8) | val2;
-    }
-
-    public machine_cycle(): void {
-        this._cycles++;
-
-        this._display.tick();
     }
 
     public checkInterrupt(): void {

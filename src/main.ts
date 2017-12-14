@@ -24,13 +24,10 @@ if (process.env.APP_ENV !== "browser") {
 
 let stopEmulation = false;
 const loop = () => {
-    const cycles = Math.floor((4194304 / 60) / 4);
+    const cycles = Math.floor(4194304 / 60);
 
     if (stopEmulation) {
-        for (let i = 0; i < cycles; i++) {
-            cpu.Display.tick();
-        }
-
+        cpu.Display.tick(cycles);
         global.requestAnimationFrame(loop);
 
         return;

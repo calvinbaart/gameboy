@@ -18,11 +18,7 @@ export class Memory {
         this.addRegister(0xFF02, () => {
             return 0;
         }, (value: number) => {
-            if (value === 0x81) {
-                //debug port
-
-                console.log(String.fromCharCode(this.read8(0xFF01)));
-            }
+            console.log(value, "FF02");
         });
     }
 
