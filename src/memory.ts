@@ -14,12 +14,6 @@ export class Memory {
         this._cpu = cpu;
         this._raw = new Uint8Array(0xFFFF);
         this._registers = {};
-
-        this.addRegister(0xFF02, () => {
-            return 0;
-        }, (value: number) => {
-            console.log(value, "FF02");
-        });
     }
 
     public addRegister(position: number, read: () => number, write: (value: number) => void): void {
@@ -54,8 +48,6 @@ export class Memory {
             this._registers[position].write(data);
             return;
         }
-
-        // if (aAddress == 0xFF02 && aValue == 0x81) { dbgStringBuilder.Append((char)Read8(0xFF01)); }
 
         this._raw[position] = data;
     }
