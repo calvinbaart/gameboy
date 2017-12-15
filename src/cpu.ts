@@ -1,6 +1,7 @@
 import { Memory } from "./memory";
 import { Opcodes, OpcodesCB, _opcodes, _cbopcodes } from "./opcodes";
 import { Display } from "./display";
+import { Audio } from "./audio";
 
 export enum Flags {
     ZeroFlag = 0b10000000,
@@ -27,13 +28,14 @@ export enum Register {
 
 export class CPU {
     private _display: Display;
+    private _audio: Audio;
+    
     private _memory: Memory;
     private _registers: Uint8Array;
     private _pc: number;
     private _sp: number;
     private _cycles: number;
     private _checkZero: boolean;
-    private _retStack: number[];
     private _enableInterrupts: boolean;
 
     constructor() {
@@ -42,7 +44,7 @@ export class CPU {
 
         this._memory = new Memory(this);
         this._display = new Display(this);
-        this._retStack = [];
+        this._audio = new Audio(this);
 
         this._registers = new Uint8Array(8);
         this._pc = 0;
@@ -51,6 +53,24 @@ export class CPU {
 
         this._checkZero = true;
         this._enableInterrupts = true;
+
+        this._memory.addRegister(0xFF00, this._registerRead.bind(this, "FF00", "P1"), this._registerWrite.bind(this, "FF00", "P1"));
+        this._memory.addRegister(0xFF01, this._registerRead.bind(this, "FF01", "SB"), this._registerWrite.bind(this, "FF01", "SB"));
+        this._memory.addRegister(0xFF02, this._registerRead.bind(this, "FF02", "SC"), this._registerWrite.bind(this, "FF02", "SC"));
+        this._memory.addRegister(0xFF04, this._registerRead.bind(this, "FF04", "DIV"), this._registerWrite.bind(this, "FF04", "DIV"));
+        this._memory.addRegister(0xFF05, this._registerRead.bind(this, "FF05", "TIMA"), this._registerWrite.bind(this, "FF05", "TIMA"));
+        this._memory.addRegister(0xFF06, this._registerRead.bind(this, "FF06", "TMA"), this._registerWrite.bind(this, "FF06", "TMA"));
+        this._memory.addRegister(0xFF07, this._registerRead.bind(this, "FF07", "TAC"), this._registerWrite.bind(this, "FF07", "TAC"));
+        this._memory.addRegister(0xFF0F, this._registerRead.bind(this, "FF0F", "IF"), this._registerWrite.bind(this, "FF0F", "IF"));
+    }
+
+    private _registerRead(addr: string, register: string): number {
+        console.log(`read register: 0x${addr}, ${register}`);
+        return 0;
+    }
+
+    private _registerWrite(addr: string, register: string, val: number): void {
+        console.log(`write register: 0x${addr}, ${register}, ${val.toString(16)}`);
     }
 
     public loadBios(): boolean {
@@ -64,11 +84,76 @@ export class CPU {
 
     public loadRom(): boolean {
         if (process.env.APP_ENV === "browser") {
-            return this._memory.mapBuffer(require("../file-loader.js!../dist/roms/cpu_instrs.gb").slice(0x100), 0x100);
+            return this._memory.mapBuffer(require("../file-loader.js!../dist/roms/03-op sp,hl.gb").slice(0x100), 0x100);
         }
 
         let fs = "fs";
-        return this._memory.mapBuffer(require(fs).readFileSync("roms/cpu_instrs.gb").slice(0x100), 0x100);
+        return this._memory.mapBuffer(require(fs).readFileSync("roms/03-op sp,hl.gb").slice(0x100), 0x100);
+    }
+
+    public debug(): void {
+        const registers = {
+            "A": this.A.toString(16),
+            "B": this.B.toString(16),
+            "C": this.C.toString(16),
+            "D": this.D.toString(16),
+            "E": this.E.toString(16),
+            "H": this.H.toString(16),
+            "L": this.L.toString(16),
+            "F": this.F.toString(16),
+            "BC": this.BC.toString(16),
+            "DE": this.DE.toString(16),
+            "HL": this.HL.toString(16),
+            "SP": this.SP.toString(16),
+            "PC": this.PC.toString(16)
+        };
+
+        let regs = [];
+        for (const key in registers) {
+            if (parseInt(registers[key], 16) < 0) {
+                registers[key] = registers[key].substr(1);
+
+                while (registers[key].length < 4) {
+                    registers[key] = "0" + registers[key];
+                }
+
+                registers[key] = "-" + registers[key];
+            } else {
+                while (registers[key].length < 4) {
+                    registers[key] = "0" + registers[key];
+                }
+            }
+
+            regs.push(`${key}=${registers[key]}`);
+        }
+
+        let flags = [];
+
+        if (this.isFlagSet(Flags.AddSubFlag)) {
+            flags.push("N");
+        } else {
+            flags.push("NN");
+        }
+
+        if (this.isFlagSet(Flags.CarryFlag)) {
+            flags.push("C");
+        } else {
+            flags.push("NC");
+        }
+
+        if (this.isFlagSet(Flags.HalfCarryFlag)) {
+            flags.push("H");
+        } else {
+            flags.push("NH");
+        }
+
+        if (this.isFlagSet(Flags.ZeroFlag)) {
+            flags.push("Z");
+        } else {
+            flags.push("NZ");
+        }
+
+        console.log(`${regs.join(", ")}, ${flags.join(" ")}`);
     }
 
     public step(): boolean {
@@ -86,6 +171,7 @@ export class CPU {
 
             this._cycles += _cbopcodes[opcode2][0];
             this._display.tick(_cbopcodes[opcode2][0]);
+            this._audio.tick(_cbopcodes[opcode2][0]);
             this.checkInterrupt();
             return true;
         }
@@ -99,6 +185,7 @@ export class CPU {
 
         this._cycles += _opcodes[opcode][0];
         this._display.tick(_opcodes[opcode][0]);
+        this._audio.tick(_opcodes[opcode][0]);
         this.checkInterrupt();
         return true;
     }
@@ -145,14 +232,6 @@ export class CPU {
 
     public clearFlags(): void {
         this.F = 0;
-    }
-
-    public pushRet(val: number): void {
-        this._retStack.push(val);
-    }
-
-    public popRet(): number {
-        return this._retStack.pop();
     }
 
     public pushStack(val: number): void {

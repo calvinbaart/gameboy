@@ -14,12 +14,6 @@ export class Memory {
         this._cpu = cpu;
         this._raw = new Uint8Array(0xFFFF);
         this._registers = {};
-
-        this.addRegister(0xFF02, () => {
-            return 0;
-        }, (value: number) => {
-            console.log(value, "FF02");
-        });
     }
 
     public addRegister(position: number, read: () => number, write: (value: number) => void): void {

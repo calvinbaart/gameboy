@@ -97,7 +97,7 @@ const debug = (name: string, args: { [key: string]: number }, values: { [key: st
 
     const log = `${name} ${tmp.join(", ")} [${regs.join(", ")}, NZ=${!cpu.isFlagSet(Flags.ZeroFlag)}, Z=${cpu.isFlagSet(Flags.ZeroFlag)}]`;
 
-    console.log(log);
+    // console.log(log);
 };
 
 function XOR(num: number, cpu: CPU): void {
@@ -319,6 +319,13 @@ export class Opcodes {
         cpu.BC = val;
     }
 
+    @Opcode(0x02, 8)
+    public static LD_0x02(cpu: CPU): void {
+        debug("LD", { "(BC)": 0, "A": 0 }, {}, cpu);
+
+        cpu.MMU.write8(cpu.BC, cpu.A);
+    }
+
     @Opcode(0x03, 8)
     public static INC_0x03(cpu: CPU): void {
         INC_16("BC", cpu);
@@ -352,7 +359,6 @@ export class Opcodes {
     @Opcode(0x0B, 8)
     public static DEC_0x0B(cpu: CPU): void {
         DEC("BC", cpu);
-
     }
 
     @Opcode(0x0C, 4)
@@ -370,6 +376,13 @@ export class Opcodes {
         LD_8("C", cpu);
     }
 
+    @Opcode(0x10, 4)
+    public static STOP_0x10(cpu: CPU): void {
+        debug("STOP", {}, {}, cpu);
+
+        // todo
+    }
+
     @Opcode(0x11, 12)
     public static LD_0x11(cpu: CPU): void {
         const val = cpu.readu16();
@@ -377,6 +390,13 @@ export class Opcodes {
         debug("LD", { "DE": 0, "nn": 2 }, { "nn": val }, cpu);
 
         cpu.DE = val;
+    }
+
+    @Opcode(0x12, 8)
+    public static LD_0x12(cpu: CPU): void {
+        debug("LD", { "(DE)": 0, "A": 0 }, {}, cpu);
+
+        cpu.MMU.write8(cpu.DE, cpu.A);
     }
 
     @Opcode(0x13, 8)
@@ -452,7 +472,6 @@ export class Opcodes {
 
         if (!cpu.isFlagSet(Flags.ZeroFlag)) {
             cpu.PC += relative;
-
         }
     }
 
@@ -712,7 +731,7 @@ export class Opcodes {
 
     @Opcode(0x78, 4)
     public static LD_0x78(cpu: CPU): void {
-        LD_8_r2_r1("A", "E", cpu);
+        LD_8_r2_r1("A", "B", cpu);
     }
 
     @Opcode(0x79, 4)
@@ -727,9 +746,7 @@ export class Opcodes {
 
     @Opcode(0x7B, 4)
     public static LD_0x7B(cpu: CPU): void {
-        debug("LD", { "A": 0, "E": 0 }, { "E": cpu.E }, cpu);
-
-        cpu.A = cpu.E;
+        LD_8_r2_r1("A", "E", cpu);
     }
 
     @Opcode(0x7C, 4)
@@ -940,7 +957,7 @@ export class Opcodes {
     public static RET_0xC9(cpu: CPU): void {
         debug("RET", {}, {}, cpu);
 
-        cpu.PC = cpu.popRet();
+        cpu.PC = cpu.popStack();
     }
 
     @Opcode(0xCD, 12)
@@ -949,7 +966,7 @@ export class Opcodes {
 
         debug("CALL", { "nn": 2 }, { "nn": addr }, cpu);
 
-        cpu.pushRet(cpu.PC);
+        cpu.pushStack(cpu.PC);
         cpu.PC = addr;
     }
 
@@ -1099,7 +1116,7 @@ export class Opcodes {
     public static RST_0xFF(cpu: CPU): void {
         const n = 0x0038;
 
-        cpu.pushRet(cpu.PC);
+        cpu.pushStack(cpu.PC);
         cpu.PC = n;
     }
 }
