@@ -49,8 +49,6 @@ export class Memory {
             return;
         }
 
-        // if (aAddress == 0xFF02 && aValue == 0x81) { dbgStringBuilder.Append((char)Read8(0xFF01)); }
-
         this._raw[position] = data;
     }
 }
