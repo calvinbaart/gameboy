@@ -3,8 +3,29 @@
     <head>
         <meta charset="UTF-8">
         <script type="text/javascript" src="scripts/main.js" defer></script>
+
+        <style>
+            *, *:before, *:after {
+                position: relative;
+                margin: 0;
+                padding: 0;
+            }
+
+            #emulator > * {
+                float: left;
+                overflow-y: auto;
+
+                height: 144px !important;
+                min-height: 144px !important;
+                max-height: 144px !important;
+            }
+        </style>
     </head>
     <body style="height: 100%;">
         <h2>Gameboy</h2>
+        <div id="emulator">
+            <div id="memory"></div>
+            <div id="instructions"></div>
+        </div>
     </body>
 </html>

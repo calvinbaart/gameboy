@@ -2,6 +2,7 @@ import { Memory } from "./memory";
 import { Opcodes, OpcodesCB, _opcodes, _cbopcodes } from "./opcodes";
 import { Display } from "./display";
 import { Audio } from "./audio";
+import { Debug } from "./debug";
 
 export enum Flags {
     ZeroFlag = 0b10000000,
@@ -29,6 +30,7 @@ export enum Register {
 export class CPU {
     private _display: Display;
     private _audio: Audio;
+    private _debug: Debug;
     
     private _memory: Memory;
     private _registers: Uint8Array;
@@ -45,6 +47,7 @@ export class CPU {
         this._memory = new Memory(this);
         this._display = new Display(this);
         this._audio = new Audio(this);
+        this._debug = new Debug(this);
 
         this._registers = new Uint8Array(8);
         this._pc = 0;
@@ -84,76 +87,11 @@ export class CPU {
 
     public loadRom(): boolean {
         if (process.env.APP_ENV === "browser") {
-            return this._memory.mapBuffer(require("../file-loader.js!../dist/roms/03-op sp,hl.gb").slice(0x100), 0x100);
+            return this._memory.mapBuffer(require("../file-loader.js!../dist/roms/cpu_instrs.gb"), 0x0000);
         }
 
         let fs = "fs";
-        return this._memory.mapBuffer(require(fs).readFileSync("roms/03-op sp,hl.gb").slice(0x100), 0x100);
-    }
-
-    public debug(): void {
-        const registers = {
-            "A": this.A.toString(16),
-            "B": this.B.toString(16),
-            "C": this.C.toString(16),
-            "D": this.D.toString(16),
-            "E": this.E.toString(16),
-            "H": this.H.toString(16),
-            "L": this.L.toString(16),
-            "F": this.F.toString(16),
-            "BC": this.BC.toString(16),
-            "DE": this.DE.toString(16),
-            "HL": this.HL.toString(16),
-            "SP": this.SP.toString(16),
-            "PC": this.PC.toString(16)
-        };
-
-        let regs = [];
-        for (const key in registers) {
-            if (parseInt(registers[key], 16) < 0) {
-                registers[key] = registers[key].substr(1);
-
-                while (registers[key].length < 4) {
-                    registers[key] = "0" + registers[key];
-                }
-
-                registers[key] = "-" + registers[key];
-            } else {
-                while (registers[key].length < 4) {
-                    registers[key] = "0" + registers[key];
-                }
-            }
-
-            regs.push(`${key}=${registers[key]}`);
-        }
-
-        let flags = [];
-
-        if (this.isFlagSet(Flags.AddSubFlag)) {
-            flags.push("N");
-        } else {
-            flags.push("NN");
-        }
-
-        if (this.isFlagSet(Flags.CarryFlag)) {
-            flags.push("C");
-        } else {
-            flags.push("NC");
-        }
-
-        if (this.isFlagSet(Flags.HalfCarryFlag)) {
-            flags.push("H");
-        } else {
-            flags.push("NH");
-        }
-
-        if (this.isFlagSet(Flags.ZeroFlag)) {
-            flags.push("Z");
-        } else {
-            flags.push("NZ");
-        }
-
-        console.log(`${regs.join(", ")}, ${flags.join(" ")}`);
+        return this._memory.mapBuffer(require(fs).readFileSync("roms/cpu_instrs.gb"), 0x0000);
     }
 
     public step(): boolean {
@@ -166,6 +104,8 @@ export class CPU {
                 this._log(opcode2, true);
                 return false;
             }
+
+            this._debug.instruction(opcode, opcode2);
 
             _cbopcodes[opcode2][1](this);
 
@@ -181,6 +121,7 @@ export class CPU {
             return false;
         }
 
+        this._debug.instruction(opcode);
         _opcodes[opcode][1](this);
 
         this._cycles += _opcodes[opcode][0];

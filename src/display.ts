@@ -4,61 +4,6 @@ const GameboyColorPalette = [
     0xEB, 0xC4, 0x60, 0x00
 ];
 
-let global: any = {};
-if (process.env.APP_ENV !== "browser") {
-    class ImageData {
-        public data: Uint8ClampedArray = new Uint8ClampedArray(160 * 144 * 4);
-        public width: number;
-        public height: number;
-    }
-
-    class CanvasContext2D {
-        public fillStyle = "";
-        
-        public fillRect(x, y, w, h) {
-
-        }
-
-        public createImageData(width, height) {
-            return new ImageData();
-        }
-
-        public putImageData(data, x, y) {
-
-        }
-    }
-    
-    type CanvasContext = CanvasContext2D;
-
-    interface ICanvas {
-        getContext: (type: string) => CanvasContext;
-        style: any;
-    }
-
-    global = {
-        createElement: function (type: string): ICanvas {
-            return {
-                getContext: (type: string): CanvasContext => {
-                    return new CanvasContext2D();
-                },
-                style: {
-                    width: 0,
-                    height: 0
-                }
-            };
-        },
-        body: {
-            appendChild: (canvas: ICanvas) => {
-
-            }
-        }
-    };
-} else {
-    type CanvasContext = CanvasRenderingContext2D;
-
-    global = document;
-}
-
 enum DisplayRegister {
     LCDC,
     STAT,
@@ -115,7 +60,7 @@ export class Display {
         this._cpu.MMU.addRegister(0xFF4A, this._readRegister.bind(this, DisplayRegister.WY), this._writeRegister.bind(this, DisplayRegister.WY));
         this._cpu.MMU.addRegister(0xFF4B, this._readRegister.bind(this, DisplayRegister.WX), this._writeRegister.bind(this, DisplayRegister.WX));
 
-        const tmp = global.createElement("canvas");
+        const tmp = document.createElement("canvas");
         tmp.style.width = "160px";
         tmp.style.height = "144px";
         tmp.width = 160;
@@ -133,7 +78,7 @@ export class Display {
             this._framebuffer[i + 3] = 255;
         }
 
-        global.body.appendChild(tmp);
+        document.getElementById("emulator").appendChild(tmp);
     }
 
     public tick(delta: number) {
