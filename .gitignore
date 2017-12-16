@@ -2,4 +2,5 @@
 /dist/bios/*.bin
 /dist/roms/*.gb
 /node_modules
+/docs
 dist/scripts/main.js
