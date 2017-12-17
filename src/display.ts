@@ -71,6 +71,8 @@ export class Display {
         this._data = this._context.createImageData(160, 144);
         this._framebuffer = this._data.data;
 
+        // this._framebuffer = new Uint8ClampedArray(160 * 144 * 4);
+
         for (let i = 0; i < (160 * 144 * 4); i += 4) {
             this._framebuffer[i + 0] = 235;
             this._framebuffer[i + 1] = 235;

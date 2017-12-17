@@ -40,6 +40,9 @@ export class CPU {
     private _checkZero: boolean;
     private _enableInterrupts: boolean;
 
+    private _specialRegisters: Uint8Array;
+    private _debugString: string;
+
     constructor() {
         new Opcodes();
         new OpcodesCB();
@@ -49,6 +52,7 @@ export class CPU {
         this._audio = new Audio(this);
         this._debug = new Debug(this);
 
+        this._specialRegisters = new Uint8Array(8);
         this._registers = new Uint8Array(8);
         this._pc = 0;
         this._sp = 0;
@@ -56,6 +60,7 @@ export class CPU {
 
         this._checkZero = true;
         this._enableInterrupts = true;
+        this._debugString = "";
 
         this._memory.addRegister(0xFF00, this._registerRead.bind(this, "FF00", "P1"), this._registerWrite.bind(this, "FF00", "P1"));
         this._memory.addRegister(0xFF01, this._registerRead.bind(this, "FF01", "SB"), this._registerWrite.bind(this, "FF01", "SB"));
@@ -68,12 +73,30 @@ export class CPU {
     }
 
     private _registerRead(addr: string, register: string): number {
-        console.log(`read register: 0x${addr}, ${register}`);
+        // console.log(`read register: 0x${addr}, ${register}`);
         return 0;
     }
 
     private _registerWrite(addr: string, register: string, val: number): void {
-        console.log(`write register: 0x${addr}, ${register}, ${val.toString(16)}`);
+        if (register === "SB") {
+            this._specialRegisters[0] = val;
+        } else if (register === "SC") {
+            this._specialRegisters[1] = val;
+
+            if (val === 0x81) {
+                if (this._specialRegisters[0] === 10) {
+                    if (this._debugString.trim().length > 0) {
+                        console.log(this._debugString);
+                    }
+                    
+                    this._debugString = "";
+                } else {
+                    this._debugString += String.fromCharCode(this._specialRegisters[0]);
+                }
+            }
+        }
+
+        // console.log(`write register: 0x${addr}, ${register}, ${val.toString(16)}`);
     }
 
     public loadBios(): boolean {
@@ -87,11 +110,11 @@ export class CPU {
 
     public loadRom(): boolean {
         if (process.env.APP_ENV === "browser") {
-            return this._memory.mapBuffer(require("../file-loader.js!../dist/roms/cpu_instrs.gb"), 0x0000);
+            return this._memory.mapBuffer(require("../file-loader.js!../dist/roms/03-op sp,hl.gb"), 0x0000);
         }
 
         let fs = "fs";
-        return this._memory.mapBuffer(require(fs).readFileSync("roms/cpu_instrs.gb"), 0x0000);
+        return this._memory.mapBuffer(require(fs).readFileSync("roms/03-op sp,hl.gb"), 0x0000);
     }
 
     public step(): boolean {
@@ -176,17 +199,17 @@ export class CPU {
     }
 
     public pushStack(val: number): void {
-        this.SP -= 1;
         this.MMU.write8(this.SP, val & 0xFF);
         this.SP -= 1;
         this.MMU.write8(this.SP, val >> 8);
+        this.SP -= 1;
     }
 
     public popStack(): number {
+        this.SP++;
         const val1 = this.MMU.read8(this.SP);
         this.SP++;
         const val2 = this.MMU.read8(this.SP);
-        this.SP++;
 
         return (val1 << 8) | val2;
     }
@@ -287,6 +310,10 @@ export class CPU {
         return this._display;
     }
 
+    get debug() {
+        return this._debug;
+    }
+
     get cycles() {
         return this._cycles;
     }
@@ -296,7 +323,7 @@ export class CPU {
     }
 
     set A(val: number) {
-        this._registers[Register.A] = val & 0xFF;
+        this._registers[Register.A] = val;
 
         if (this.checkZero) {
             if (this._registers[Register.A] === 0) {
@@ -304,12 +331,6 @@ export class CPU {
             } else {
                 this.disableFlag(Flags.ZeroFlag);
             }
-        }    
-
-        if ((this._registers[Register.A] & 0xF) == 0) {
-            this.enableFlag(Flags.HalfCarryFlag);
-        } else {
-            this.disableFlag(Flags.HalfCarryFlag);
         }
     }
 
@@ -326,17 +347,11 @@ export class CPU {
             } else {
                 this.disableFlag(Flags.ZeroFlag);
             }
-        }    
-
-        if ((this._registers[Register.B] & 0xF) == 0) {
-            this.enableFlag(Flags.HalfCarryFlag);
-        } else {
-            this.disableFlag(Flags.HalfCarryFlag);
         }
     }
 
     set C(val: number) {
-        this._registers[Register.C] = val & 0xFF;
+        this._registers[Register.C] = val;
 
         if (this.checkZero) {
             if (this._registers[Register.C] === 0) {
@@ -344,17 +359,11 @@ export class CPU {
             } else {
                 this.disableFlag(Flags.ZeroFlag);
             }
-        }    
-
-        if ((this._registers[Register.C] & 0xF) == 0) {
-            this.enableFlag(Flags.HalfCarryFlag);
-        } else {
-            this.disableFlag(Flags.HalfCarryFlag);
         }
     }
 
     set D(val: number) {
-        this._registers[Register.D] = val & 0xFF;
+        this._registers[Register.D] = val;
 
         if (this.checkZero) {
             if (this._registers[Register.D] === 0) {
@@ -362,17 +371,11 @@ export class CPU {
             } else {
                 this.disableFlag(Flags.ZeroFlag);
             }
-        }    
-
-        if ((this._registers[Register.D] & 0xF) == 0) {
-            this.enableFlag(Flags.HalfCarryFlag);
-        } else {
-            this.disableFlag(Flags.HalfCarryFlag);
         }
     }
 
     set E(val: number) {
-        this._registers[Register.E] = val & 0xFF;
+        this._registers[Register.E] = val;
 
         if (this.checkZero) {
             if (this._registers[Register.E] === 0) {
@@ -380,17 +383,11 @@ export class CPU {
             } else {
                 this.disableFlag(Flags.ZeroFlag);
             }
-        }    
-
-        if ((this._registers[Register.E] & 0xF) == 0) {
-            this.enableFlag(Flags.HalfCarryFlag);
-        } else {
-            this.disableFlag(Flags.HalfCarryFlag);
         }
     }
     
     set H(val: number) {
-        this._registers[Register.H] = val & 0xFF;
+        this._registers[Register.H] = val;
 
         if (this.checkZero) {
             if (this._registers[Register.H] === 0) {
@@ -398,17 +395,11 @@ export class CPU {
             } else {
                 this.disableFlag(Flags.ZeroFlag);
             }
-        }    
-
-        if ((this._registers[Register.H] & 0xF) == 0) {
-            this.enableFlag(Flags.HalfCarryFlag);
-        } else {
-            this.disableFlag(Flags.HalfCarryFlag);
         }
     }
 
     set L(val: number) {
-        this._registers[Register.L] = val & 0xFF;
+        this._registers[Register.L] = val;
 
         if (this.checkZero) {
             if (this._registers[Register.L] === 0) {
@@ -416,12 +407,6 @@ export class CPU {
             } else {
                 this.disableFlag(Flags.ZeroFlag);
             }
-        }    
-
-        if ((this._registers[Register.L] & 0xF) == 0) {
-            this.enableFlag(Flags.HalfCarryFlag);
-        } else {
-            this.disableFlag(Flags.HalfCarryFlag);
         }
     }
 

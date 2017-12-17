@@ -5,11 +5,17 @@ interface IRegister {
     write: (value: number) => void;
 }
 
+interface IMapping {
+    active: boolean;
+    data: Uint8Array;
+    position: number;
+}
+
 export class Memory {
     private _cpu: CPU;
     private _raw: Uint8Array;
     private _registers: { [key: number]: IRegister };
-    private _mappings: [number, Uint8Array][];
+    private _mappings: IMapping[];
 
     constructor(cpu: CPU) {
         this._cpu = cpu;
@@ -17,7 +23,7 @@ export class Memory {
         this._registers = {};
         this._mappings = [];
 
-        this.addRegister(0xFF50, () => 0, x => this.unmap(0));
+        this.addRegister(0xFF50, () => 0, x => x === 1 ? this.unmap(0) : this.remap(0));
     }
 
     public addRegister(position: number, read: () => number, write: (value: number) => void): void {
@@ -32,13 +38,21 @@ export class Memory {
             return false;
         }
 
-        this._mappings.push([position, new Uint8Array(buffer)]);
+        this._mappings.push({
+            position,
+            data: new Uint8Array(buffer),
+            active: true
+        });
 
         return true;
     }
 
+    public remap(index: number): void {
+        this._mappings[index].active = true;
+    }
+
     public unmap(index: number): void {
-        this._mappings.splice(index, 1);
+        this._mappings[index].active = false;
     }
 
     public read8(position: number): number {
@@ -46,9 +60,13 @@ export class Memory {
             return this._registers[position].read();
         }
 
-        for(const mapping of this._mappings) {
-            if(position >= mapping[0] && position < mapping[0] + mapping[1].length) {
-                return mapping[1][position - mapping[0]];
+        for (const mapping of this._mappings) {
+            if (!mapping.active) {
+                continue;
+            }
+
+            if(position >= mapping.position && position < mapping.position + mapping.data.length) {
+                return mapping.data[position - mapping.position];
             }
         }
 
@@ -61,15 +79,19 @@ export class Memory {
             return;
         }
 
-        if(position >= 0x6000 && position < 0x7FFF) {
-            console.log("MBC1 MODE");
-        } else if(position >= 0x2000 && position < 0x3FFF) {
-            console.log("MBC1 ROM BANK");
-        }
+        // if(position >= 0x6000 && position < 0x7FFF) {
+        //     console.log("MBC1 MODE");
+        // } else if(position >= 0x2000 && position < 0x3FFF) {
+        //     console.log("MBC1 ROM BANK");
+        // }
 
-        for(const mapping of this._mappings) {
-            if(position >= mapping[0] && position < mapping[0] + mapping[1].length) {
-                mapping[1][position - mapping[0]] = data;
+        for (const mapping of this._mappings) {
+            if (!mapping.active) {
+                continue;
+            }
+
+            if (position >= mapping.position && position < mapping.position + mapping.data.length) {
+                mapping.data[position - mapping.position] = data;
                 return;
             }
         }

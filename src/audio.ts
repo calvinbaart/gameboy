@@ -95,12 +95,12 @@ export class Audio
     }
 
     private _readRegister(register: AudioRegister): number {
-        console.log(`read ${register}`);
+        // console.log(`read ${register}`);
         return this._registers[register];
     }
 
     private _writeRegister(register: AudioRegister, value: number): void {
-        console.log(`write ${register}: ${value.toString(16)}`);
+        // console.log(`write ${register}: ${value.toString(16)}`);
         this._registers[register] = value;
     }
 }
