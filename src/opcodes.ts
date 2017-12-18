@@ -211,6 +211,28 @@ function SUB(register: string | number, cpu: CPU): void {
     //todo: h flag
 }
 
+function ADD_16(register1: string, register2: string | number, cpu: CPU): void {
+    cpu.clearFlags();
+    
+    let val = 0;
+    if (typeof register2 === "string") {
+        val = cpu[register2];
+    } else {
+        val = register2 as number;
+    }
+
+    // if (((cpu[register1] + val) & 0x80) != 0) {
+    //     cpu.enableFlag(Flags.CarryFlag);
+    // }
+
+    cpu.checkZero = false;
+    cpu[register1] += val;
+    cpu.checkZero = true;
+
+    // todo:   H - Set if carry from bit 3
+    //         C
+}
+
 function ADD(register1: string, register2: string | number, cpu: CPU): void {
     cpu.disableFlag(Flags.HalfCarryFlag);
     cpu.disableFlag(Flags.CarryFlag);
@@ -539,6 +561,11 @@ export class Opcodes {
         cpu.checkZero = true;
     }
 
+    @Opcode(0x33, 8, "INC SP")
+    public static INC_0x33(cpu: CPU): void {
+        INC_16("SP", cpu);
+    }
+
     @Opcode(0x34, 12, "INC (HL)")
     public static INC_0x34(cpu: CPU): void {
         INC(null, cpu);
@@ -570,6 +597,11 @@ export class Opcodes {
         cpu.checkZero = false;
         ADD("HL", "SP", cpu);
         cpu.checkZero = true;
+    }
+
+    @Opcode(0x3B, 8, "DEC SP")
+    public static DEC_0x3B(cpu: CPU): void {
+        DEC_16("SP", cpu);
     }
 
     @Opcode(0x3C, 4, "INC A")
@@ -661,6 +693,11 @@ export class Opcodes {
         LD_8_r2_r1("D", "A", cpu);
     }
 
+    @Opcode(0x5D, 4, "LD E,L")
+    public static LD_0x5D(cpu: CPU): void {
+        LD_8_r2_r1("E", "L", cpu);
+    }
+
     @Opcode(0x5E, 8, "LD E,(HL)")
     public static LD_0x5E(cpu: CPU): void {
         LD_8_r2_r1("E", null, cpu);
@@ -676,9 +713,24 @@ export class Opcodes {
         LD_8_r2_r1("H", "B", cpu);
     }
 
+    @Opcode(0x62, 4, "LD H,D")
+    public static LD_0x62(cpu: CPU): void {
+        LD_8_r2_r1("H", "D", cpu);
+    }
+
+    @Opcode(0x66, 8, "LD H,(HL)")
+    public static LD_0x66(cpu: CPU): void {
+        LD_8_r2_r1("H", null, cpu);
+    }
+
     @Opcode(0x67, 4, "LD H,A")
     public static LD_0x67(cpu: CPU): void {
         LD_8_r2_r1("H", "A", cpu);
+    }
+
+    @Opcode(0x6B, 4, "LD L,E")
+    public static LD_0x6B(cpu: CPU): void {
+        LD_8_r2_r1("L", "E", cpu);
     }
 
     @Opcode(0x6E, 8, "LD L,(HL)")
@@ -704,6 +756,11 @@ export class Opcodes {
     @Opcode(0x72, 8, "LD (HL),D")
     public static LD_0x72(cpu: CPU): void {
         LD_8_r2_r1(null, "D", cpu);
+    }
+
+    @Opcode(0x73, 8, "LD (HL),E")
+    public static LD_0x73(cpu: CPU): void {
+        LD_8_r2_r1(null, "E", cpu);
     }
 
     @Opcode(0x77, 8, "LD (HL),A")
@@ -806,14 +863,54 @@ export class Opcodes {
         SUB("A", cpu);
     }
 
+    @Opcode(0xA0, 4, "AND B")
+    public static AND_0xA0(cpu: CPU): void {
+        AND("B", cpu);
+    }
+
     @Opcode(0xA1, 4, "AND C")
     public static AND_0xA1(cpu: CPU): void {
         AND("C", cpu);
     }
 
+    @Opcode(0xA2, 4, "AND D")
+    public static AND_0xA2(cpu: CPU): void {
+        AND("D", cpu);
+    }
+
+    @Opcode(0xA3, 4, "AND E")
+    public static AND_0xA3(cpu: CPU): void {
+        AND("E", cpu);
+    }
+
+    @Opcode(0xA4, 4, "AND H")
+    public static AND_0xA4(cpu: CPU): void {
+        AND("H", cpu);
+    }
+
+    @Opcode(0xA5, 4, "AND L")
+    public static AND_0xA5(cpu: CPU): void {
+        AND("L", cpu);
+    }
+
+    @Opcode(0xA6, 4, "AND (HL)")
+    public static AND_0xA6(cpu: CPU): void {
+        AND(cpu.MMU.read8(cpu.HL), cpu);
+    }
+
+    @Opcode(0xA7, 4, "AND A")
+    public static AND_0xA7(cpu: CPU): void {
+        AND("A", cpu);
+    }
+
     @Opcode(0xA9, 4, "XOR C")
     public static XOR_0xA9(cpu: CPU): void {
         XOR(cpu.C, cpu);
+    }
+
+    @Opcode(0xAD, 4, "XOR L")
+    public static XOR_0xAD(cpu: CPU): void {
+        XOR(cpu.L, cpu);
     }
 
     @Opcode(0xAE, 8, "XOR (HL)")
@@ -958,6 +1055,15 @@ export class Opcodes {
         }
     }
 
+    // @Opcode(0xCA, 12, "JP Z,a16")
+    // public static JP_0xCA(cpu: CPU): void {
+    //     const addr = cpu.readu16();
+
+    //     if (cpu.isFlagSet(Flags.ZeroFlag)) {
+    //         cpu.PC = addr;
+    //     }
+    // }
+
     @Opcode(0xCD, 12, "CALL a16")
     public static CALL_0xCD(cpu: CPU): void {
         const addr = cpu.readu16();
@@ -1061,11 +1167,14 @@ export class Opcodes {
         AND(val, cpu);
     }
 
+    @Opcode(0xE8, 4, "ADD SP,r8")
+    public static ADD_0xE8(cpu: CPU): void {
+        ADD_16("SP", cpu.reads8(), cpu);
+    }
+
     @Opcode(0xE9, 4, "JP (HL)")
     public static JP_0xE9(cpu: CPU): void {
-        const addr = cpu.MMU.read8(cpu.HL);
-
-        cpu.PC = addr;
+        cpu.PC = cpu.HL;
     }
 
     @Opcode(0xEA, 16, "LD (a16),A")
@@ -1119,6 +1228,15 @@ export class Opcodes {
     @Opcode(0xF6, 8, "OR d8")
     public static OR_0xF6(cpu: CPU): void {
         OR(cpu.readu8(), cpu);
+    }
+
+    @Opcode(0xF8, 12, "LD HL,SP+r8")
+    public static LD_0xF8(cpu: CPU): void {
+        const val = cpu.reads16();
+
+        cpu.checkZero = false;
+        cpu.HL = cpu.SP + val;
+        cpu.checkZero = true;
     }
 
     @Opcode(0xF9, 8, "LD SP,HL")
@@ -1183,6 +1301,11 @@ export class OpcodesCB {
         RR("D", true, cpu);
     }
 
+    @Opcode(0x1B, 8, "CB RR E", OpcodeType.CB)
+    public static RR_0x1B(cpu: CPU): void {
+        RR("E", true, cpu);
+    }
+
     @Opcode(0x37, 8, "SWAP A", OpcodeType.CB)
     public static SWAP_0x37(cpu: CPU): void {
         SWAP("A", cpu);
@@ -1208,5 +1331,12 @@ export class OpcodesCB {
 
         cpu.enableFlag(Flags.HalfCarryFlag);
         cpu.disableFlag(Flags.AddSubFlag);
+    }
+
+    @Opcode(0x87, 8, "CB RES 0,A", OpcodeType.CB)
+    public static RES_0x87(cpu: CPU): void {
+        cpu.checkZero = false;
+        cpu.A &= ~1;
+        cpu.checkZero = true;
     }
 }
