@@ -172,7 +172,7 @@ export class CPU {
         const result1 = this.readu8();
         const result2 = this.readu8();
 
-        return (result2 << 8) | result1;
+        return ((result2 & 0xFF) << 8) | (result1 & 0xFF);
     }
 
     public reads16(): number {
@@ -411,30 +411,38 @@ export class CPU {
     }
 
     set AF(val: number) {
+        val = val & 0xFFFF;
+
         this._registers[Register.A] = val >> 8;
         this._registers[Register.F] = val & 0xFF;
     }
 
     set BC(val: number) {
+        val = val & 0xFFFF;
+
         this._registers[Register.B] = val >> 8;
         this._registers[Register.C] = val & 0xFF;
     }
 
     set DE(val: number) {
+        val = val & 0xFFFF;
+
         this._registers[Register.D] = val >> 8;
         this._registers[Register.E] = val & 0xFF;
     }
 
     set HL(val: number) {
+        val = val & 0xFFFF;
+
         this._registers[Register.H] = val >> 8;
         this._registers[Register.L] = val & 0xFF;
     }
 
     set SP(val: number) {
-        this._sp = val;
+        this._sp = val & 0xFFFF;
     }
 
     set PC(val: number) {
-        this._pc = val;
+        this._pc = val & 0xFFFF;
     }
 }

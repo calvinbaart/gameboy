@@ -221,16 +221,19 @@ function ADD_16(register1: string, register2: string | number, cpu: CPU): void {
         val = register2 as number;
     }
 
-    // if (((cpu[register1] + val) & 0x80) != 0) {
-    //     cpu.enableFlag(Flags.CarryFlag);
-    // }
+    const result = cpu[register1] + val;
+
+    if (((cpu[register1] ^ val ^ (result & 0xFFFF)) & 0x100) == 0x100) {
+        cpu.enableFlag(Flags.CarryFlag);
+    }
+
+    if (((cpu[register1] ^ val ^ (result & 0xFFFF)) & 0x10) == 0x10) {
+        cpu.enableFlag(Flags.HalfCarryFlag);
+    }
 
     cpu.checkZero = false;
-    cpu[register1] += val;
+    cpu[register1] = result;
     cpu.checkZero = true;
-
-    // todo:   H - Set if carry from bit 3
-    //         C
 }
 
 function ADD(register1: string, register2: string | number, cpu: CPU): void {
@@ -594,9 +597,7 @@ export class Opcodes {
 
     @Opcode(0x39, 8, "ADD HL,SP")
     public static ADD_0x39(cpu: CPU): void {
-        cpu.checkZero = false;
-        ADD("HL", "SP", cpu);
-        cpu.checkZero = true;
+        ADD_16("HL", "SP", cpu);
     }
 
     @Opcode(0x3B, 8, "DEC SP")
@@ -965,6 +966,24 @@ export class Opcodes {
         OR(cpu.A, cpu);
     }
 
+    @Opcode(0xBB, 8, "CP E")
+    public static CP_0xBB(cpu: CPU): void {
+        cpu.clearFlags();
+        cpu.enableFlag(Flags.AddSubFlag);
+
+        let val = cpu.E;
+
+        if (val === cpu.A) {
+            cpu.enableFlag(Flags.ZeroFlag);
+        }
+
+        // todo: H - Set if no borrow from bit 4. (??)
+
+        if (cpu.A < val) {
+            cpu.enableFlag(Flags.CarryFlag);
+        }
+    }
+
     @Opcode(0xBE, 8, "CP (HL)")
     public static CP_0xBE(cpu: CPU): void {
         cpu.clearFlags();
@@ -1055,14 +1074,15 @@ export class Opcodes {
         }
     }
 
-    // @Opcode(0xCA, 12, "JP Z,a16")
-    // public static JP_0xCA(cpu: CPU): void {
-    //     const addr = cpu.readu16();
+    @Opcode(0xCA, 12, "JP Z,a16")
+    public static JP_0xCA(cpu: CPU): void {
+        const addr = cpu.readu16();
 
-    //     if (cpu.isFlagSet(Flags.ZeroFlag)) {
-    //         cpu.PC = addr;
-    //     }
-    // }
+        if (cpu.isFlagSet(Flags.ZeroFlag)) {
+            console.log("JP: ", addr.toString(16));
+            cpu.PC = addr;
+        }
+    }
 
     @Opcode(0xCD, 12, "CALL a16")
     public static CALL_0xCD(cpu: CPU): void {
@@ -1169,7 +1189,7 @@ export class Opcodes {
 
     @Opcode(0xE8, 4, "ADD SP,r8")
     public static ADD_0xE8(cpu: CPU): void {
-        ADD_16("SP", cpu.reads8(), cpu);
+        ADD_16("SP", cpu.readu8(), cpu);
     }
 
     @Opcode(0xE9, 4, "JP (HL)")
@@ -1212,6 +1232,7 @@ export class Opcodes {
     public static POP_0xF1(cpu: CPU): void {
         cpu.checkZero = false;
         cpu.AF = cpu.popStack();
+        cpu.F = cpu.F & 0xF0;
         cpu.checkZero = true;
     }
 
@@ -1232,10 +1253,21 @@ export class Opcodes {
 
     @Opcode(0xF8, 12, "LD HL,SP+r8")
     public static LD_0xF8(cpu: CPU): void {
-        const val = cpu.reads16();
+        cpu.clearFlags();
 
+        const val = cpu.reads8();
+        const result = (cpu.SP + val) & 0xFFFF;
+
+        if (((cpu.SP ^ val ^ result) & 0x100) == 0x100) {
+            cpu.enableFlag(Flags.CarryFlag);
+        }
+
+        if (((cpu.SP ^ val ^ result) & 0x10) == 0x10) {
+            cpu.enableFlag(Flags.HalfCarryFlag);
+        }
+        
         cpu.checkZero = false;
-        cpu.HL = cpu.SP + val;
+        cpu.HL = result;
         cpu.checkZero = true;
     }
 
