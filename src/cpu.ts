@@ -34,14 +34,16 @@ export class CPU {
     
     private _memory: Memory;
     private _registers: Uint8Array;
-    private _pc: number;
-    private _sp: number;
+    private _registers16: Uint16Array;
     private _cycles: number;
     private _checkZero: boolean;
     private _enableInterrupts: boolean;
 
     private _specialRegisters: Uint8Array;
     private _debugString: string;
+
+    private _registerMap: { [key: number]: string };
+    private _byteRegisterMap: { [key: number]: string };
 
     constructor() {
         new Opcodes();
@@ -54,8 +56,7 @@ export class CPU {
 
         this._specialRegisters = new Uint8Array(8);
         this._registers = new Uint8Array(8);
-        this._pc = 0;
-        this._sp = 0;
+        this._registers16 = new Uint16Array(3);
         this._cycles = 0;
 
         this._checkZero = true;
@@ -70,6 +71,24 @@ export class CPU {
         this._memory.addRegister(0xFF06, this._registerRead.bind(this, "FF06", "TMA"), this._registerWrite.bind(this, "FF06", "TMA"));
         this._memory.addRegister(0xFF07, this._registerRead.bind(this, "FF07", "TAC"), this._registerWrite.bind(this, "FF07", "TAC"));
         this._memory.addRegister(0xFF0F, this._registerRead.bind(this, "FF0F", "IF"), this._registerWrite.bind(this, "FF0F", "IF"));
+
+        this._registerMap = {
+            0: "BC",
+            1: "DE",
+            2: "HL",
+            3: "SP"
+        };
+
+        this._byteRegisterMap = {
+            0: "B",
+            1: "C",
+            2: "D",
+            3: "E",
+            4: "H",
+            5: "L",
+            6: "F",
+            7: "A"
+        };
     }
 
     private _registerRead(addr: string, register: string): number {
@@ -128,9 +147,9 @@ export class CPU {
                 return false;
             }
 
-            this._debug.instruction(opcode, opcode2);
+            // this._debug.instruction(opcode, opcode2);
 
-            _cbopcodes[opcode2][1](this);
+            _cbopcodes[opcode2][1](opcode2, this);
 
             this._cycles += _cbopcodes[opcode2][0];
             this._display.tick(_cbopcodes[opcode2][0]);
@@ -144,8 +163,8 @@ export class CPU {
             return false;
         }
 
-        this._debug.instruction(opcode);
-        _opcodes[opcode][1](this);
+        // this._debug.instruction(opcode);
+        _opcodes[opcode][1](opcode, this);
 
         this._cycles += _opcodes[opcode][0];
         this._display.tick(_opcodes[opcode][0]);
@@ -222,6 +241,18 @@ export class CPU {
         // todo
     }
 
+    public readRegisterType(val: number, useAF: boolean): string {
+        if ((val & 0x03) == 0x03) {
+            return useAF ? "AF" : this._registerMap[0x03];
+        } else {
+            return this._registerMap[val & 0x03];
+        }
+    }
+
+    public readByteRegisterType(val: number): string {
+        return this._byteRegisterMap[val & 0x07];
+    }
+
     private _log(opcode: number, isCB: boolean = false): void {
         if (isCB) {
             console.log(`Unknown cb opcode 0x${opcode.toString(16)}`);
@@ -279,11 +310,11 @@ export class CPU {
     }
 
     get SP() {
-        return this._sp;
+        return this._registers16[0];
     }
 
     get PC() {
-        return this._pc;
+        return this._registers16[1];
     }
 
     get AF() {
@@ -411,38 +442,38 @@ export class CPU {
     }
 
     set AF(val: number) {
-        val = val & 0xFFFF;
+        this._registers16[2] = val;
 
-        this._registers[Register.A] = val >> 8;
-        this._registers[Register.F] = val & 0xFF;
+        this._registers[Register.A] = this._registers16[2] >> 8;
+        this._registers[Register.F] = this._registers16[2] & 0xFF;
     }
 
     set BC(val: number) {
-        val = val & 0xFFFF;
+        this._registers16[2] = val;
 
-        this._registers[Register.B] = val >> 8;
-        this._registers[Register.C] = val & 0xFF;
+        this._registers[Register.B] = this._registers16[2] >> 8;
+        this._registers[Register.C] = this._registers16[2] & 0xFF;
     }
 
     set DE(val: number) {
-        val = val & 0xFFFF;
+        this._registers16[2] = val;
 
-        this._registers[Register.D] = val >> 8;
-        this._registers[Register.E] = val & 0xFF;
+        this._registers[Register.D] = this._registers16[2] >> 8;
+        this._registers[Register.E] = this._registers16[2] & 0xFF;
     }
 
     set HL(val: number) {
-        val = val & 0xFFFF;
+        this._registers16[2] = val;
 
-        this._registers[Register.H] = val >> 8;
-        this._registers[Register.L] = val & 0xFF;
+        this._registers[Register.H] = this._registers16[2] >> 8;
+        this._registers[Register.L] = this._registers16[2] & 0xFF;
     }
 
     set SP(val: number) {
-        this._sp = val & 0xFFFF;
+        this._registers16[0] = val;
     }
 
     set PC(val: number) {
-        this._pc = val & 0xFFFF;
+        this._registers16[1] = val;
     }
 }

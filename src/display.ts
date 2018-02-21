@@ -1,4 +1,5 @@
 import { CPU } from "./cpu";
+const document = require("./browser.js");
 
 const GameboyColorPalette = [
     0xEB, 0xC4, 0x60, 0x00

@@ -1,12 +1,13 @@
 import { CPU, Flags } from "./cpu";
 import { _cbopcodes, _opcodes } from "./opcodes";
 
+const fs = require("./fs.js");
+
 export interface IInstruction {
     name: string;
     state: { [key: string]: number };
     executed: number;
     callstack: IInstruction[];
-    element: HTMLSpanElement;
 }
 
 export interface IFunction {
@@ -25,6 +26,7 @@ export class Debug
     private _callstack: IInstruction[];
     private _functions: IFunction[];
     private _activeFunc: number[];
+    private _trace: number;
 
     constructor(cpu: CPU) {
         this._cpu = cpu;
@@ -32,15 +34,10 @@ export class Debug
         this._callstack = [];
         this._functions = [];
         this._activeFunc = [];
+        this._trace = fs.openSync("./trace.txt", "w");
     }
 
     public instruction(code: number, code2?: number) {
-        let pc = this._cpu.PC.toString(16);
-
-        if(pc.length < 4) {
-            pc = "0".repeat(4 - pc.length) + pc;
-        }
-
         let name = "";
         if(code === 0xCB) {
             if(_cbopcodes[code2] !== undefined) {
@@ -66,21 +63,8 @@ export class Debug
         PC = `${PC}`;
 
         if (this._instructions[PC] === undefined) {
-            let element = document.createElement("span");
-            element.innerHTML = `<div class='location'>${PC}</div><div class='instruction'>${name}</div></div>`;
-
             const keys = Object.keys(this._instructions);
             keys.sort((a, b) => (PCRaw - parseInt(a, 16)) - (PCRaw - parseInt(b, 16)));
-            
-            // if (keys.length > 0) {
-            //     if (parseInt(keys[0], 16) < PCRaw) {
-            //         document.getElementById("instructions").insertBefore(element, this._instructions[keys[0]].element.nextElementSibling);
-            //     } else {
-            //         document.getElementById("instructions").insertBefore(element, this._instructions[keys[0]].element);
-            //     }
-            // } else {
-            //     document.getElementById("instructions").appendChild(element);
-            // }
 
             this._instructions[PC] = {
                 name: name,
@@ -101,8 +85,7 @@ export class Debug
                     "PC": this._cpu.PC
                 },
                 executed: 1,
-                callstack: this._callstack.slice(0),
-                element: element
+                callstack: this._callstack.slice(0)
             };
         } else {
             this._instructions[PC].executed++;
@@ -127,13 +110,14 @@ export class Debug
                 "PC": this._cpu.PC
             },
             executed: 1,
-            callstack: null,
-            element: null
+            callstack: null
         });
 
         if (this._callstack.length >= 5000) {
             this._callstack.shift();
         }
+
+        this.debug(this._callstack[this._callstack.length - 1]);
     }
 
     public func(addr: number, active: boolean = true): void {
@@ -168,15 +152,11 @@ export class Debug
             "C": instruction.state.C.toString(16),
             "D": instruction.state.D.toString(16),
             "E": instruction.state.E.toString(16),
+            "F": instruction.state.F.toString(16),
             "H": instruction.state.H.toString(16),
             "L": instruction.state.L.toString(16),
-            "F": instruction.state.F.toString(16),
-            "AF": instruction.state.AF.toString(16),
-            "BC": instruction.state.BC.toString(16),
-            "DE": instruction.state.DE.toString(16),
-            "HL": instruction.state.HL.toString(16),
-            "SP": instruction.state.SP.toString(16),
-            "PC": instruction.state.PC.toString(16)
+            "LY": this._cpu.Display.LY,
+            "SP": instruction.state.SP.toString(16)
         };
 
         let regs = [];
@@ -195,36 +175,18 @@ export class Debug
                 }
             }
 
-            regs.push(`${key}=${registers[key]}`);
+            regs.push(`${key}:${registers[key]}`);
         }
 
-        let flags = [];
-
-        // if(instruction.state.F & )
-        if (instruction.state.F & Flags.AddSubFlag) {
-            flags.push("N");
-        } else {
-            flags.push("NN");
+        let PC = `${(this._cpu.PC - 1).toString(16)}`;
+        
+        if (PC.length < 4) {
+            PC = "0".repeat(4 - PC.length) + PC;
         }
 
-        if (instruction.state.F & Flags.CarryFlag) {
-            flags.push("C");
-        } else {
-            flags.push("NC");
-        }
+        let spacing = " ".repeat(20 - instruction.name.length);
+        let line = `${PC}: ${instruction.name}${spacing}${regs.join(" ")}\r\n`;
 
-        if (instruction.state.F & Flags.HalfCarryFlag) {
-            flags.push("H");
-        } else {
-            flags.push("NH");
-        }
-
-        if (instruction.state.F & Flags.ZeroFlag) {
-            flags.push("Z");
-        } else {
-            flags.push("NZ");
-        }
-
-        console.log(`${instruction.name} [${regs.join(", ")}, ${flags.join(" ")}]`);
+        fs.writeSync(this._trace, line);
     }
 }

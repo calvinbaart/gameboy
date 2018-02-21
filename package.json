@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "build": "./node_modules/.bin/webpack",
     "test": "mocha -r ts-node/register tests/**/*.ts"
   },
   "author": "",
