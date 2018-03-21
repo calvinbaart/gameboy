@@ -4,3 +4,4 @@
 /node_modules
 /docs
 dist/scripts/main.js
+trace.txt

@@ -15,7 +15,7 @@ let global: any = {};
 if (process.env.APP_ENV !== "browser") {
     global = {
         requestAnimationFrame: function (callback) {
-            return setTimeout(callback, (1.0 / 60) * 1000);
+            return setTimeout(callback, 1);
         }
     };
 } else {

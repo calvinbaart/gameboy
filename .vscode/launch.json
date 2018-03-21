@@ -1,7 +1,4 @@
-{
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+{ // launch.json
     "version": "0.2.0",
     "configurations": [
         {
@@ -9,11 +6,10 @@
             "type": "node",
             "request": "launch",
             "protocol": "inspector",
-            // Use ts-node as drop-in replacement for node
-            "runtimeExecutable": "${workspaceRoot}/node_modules/.bin/ts-node",
+            "preLaunchTask": "Compile",
             // Manually specify the args to pass
             "runtimeArgs": [
-                "${workspaceRoot}/src/main.ts"
+                "${workspaceRoot}/dist/main.js"
             ],
             "cwd": "${workspaceFolder}/dist"
         }

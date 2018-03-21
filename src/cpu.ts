@@ -4,16 +4,32 @@ import { Display } from "./display";
 import { Audio } from "./audio";
 import { Debug } from "./debug";
 
+export enum SpecialRegister {
+    P1,
+    SB,
+    SC,
+    DIV,
+    TIMA,
+    TMA,
+    TAC,
+    IF,
+    IE
+}
+
+export enum Interrupt {
+    VBlank,
+    LCDStat,
+    Timer,
+    Serial,
+    Joypad
+}
+
 export enum Flags {
     ZeroFlag = 0b10000000,
     AddSubFlag = 0b01000000,
     HalfCarryFlag = 0b00100000,
     CarryFlag = 0b00010000,
     Unused = 0b00001111
-}
-
-export enum InterruptType {
-    VBlank
 }
 
 export enum Register {
@@ -27,23 +43,65 @@ export enum Register {
     F = 1
 }
 
+export enum RomType {
+    UNKNOWN = -1,
+    ROMONLY = 0x00,
+    MBC1 = 0x01,
+    MBC1RAM = 0x02,
+    MBC1RAMBATTERY = 0x03,
+    MBC2 = 0x05,
+    MBC2BATTERY = 0x06,
+    ROMRAM = 0x08,
+    ROMRAMBATTERY = 0x09,
+    MMMO1 = 0xB,
+    MMMO1RAM = 0xC,
+    MMMO1RAMBATTERY = 0xD,
+    MBC3TIMERBATTERY = 0xF,
+    MBC3TIMERRAMBATTERY = 0x10,
+    MBC3 = 0x11,
+    MBC3RAM = 0x12,
+    MBC3RAMBATTERY = 0x13,
+    MBC5 = 0x19,
+    MBC5RAM = 0x1A,
+    MBC5RAMBATTERY = 0x1B,
+    MBC5RUMBLE = 0x1C,
+    MBC5RUMBLERAM = 0x1D,
+    MBC5RUMBLERAMBATTERY = 0x1E,
+    MBC6 = 0x20,
+    MBC7SENSORRUMBLERAMBATTERY = 0x22,
+    POCKETCAMERA = 0xFC,
+    BANDAITAMA5 = 0xFD,
+    HUC3 = 0xFE,
+    HUC1RAMBATTERY = 0xFF
+}
+
 export class CPU {
     private _display: Display;
     private _audio: Audio;
     private _debug: Debug;
+    private _enableDebugging: boolean;
     
     private _memory: Memory;
     private _registers: Uint8Array;
     private _registers16: Uint16Array;
     private _cycles: number;
-    private _checkZero: boolean;
     private _enableInterrupts: boolean;
 
     private _specialRegisters: Uint8Array;
     private _debugString: string;
+    private _waitForInterrupt: boolean;
 
     private _registerMap: { [key: number]: string };
     private _byteRegisterMap: { [key: number]: string };
+
+    private _romType: RomType;
+    private _halt: boolean;
+
+    // Timer
+    private _timerEnabled: boolean;
+    private _ticksPerClockIncrement: number;
+    private _divCycles: number;
+    private _timerCycles: number;
 
     constructor() {
         new Opcodes();
@@ -53,24 +111,30 @@ export class CPU {
         this._display = new Display(this);
         this._audio = new Audio(this);
         this._debug = new Debug(this);
+        this._enableDebugging = false;
+        this._waitForInterrupt = false;
+        this._halt = false;
 
-        this._specialRegisters = new Uint8Array(8);
+        this._specialRegisters = new Uint8Array(9);
         this._registers = new Uint8Array(8);
         this._registers16 = new Uint16Array(3);
         this._cycles = 0;
+        this._divCycles = 0;
+        this._timerCycles = 0;
+        this._ticksPerClockIncrement = 1024;
 
-        this._checkZero = true;
         this._enableInterrupts = true;
         this._debugString = "";
 
-        this._memory.addRegister(0xFF00, this._registerRead.bind(this, "FF00", "P1"), this._registerWrite.bind(this, "FF00", "P1"));
-        this._memory.addRegister(0xFF01, this._registerRead.bind(this, "FF01", "SB"), this._registerWrite.bind(this, "FF01", "SB"));
-        this._memory.addRegister(0xFF02, this._registerRead.bind(this, "FF02", "SC"), this._registerWrite.bind(this, "FF02", "SC"));
-        this._memory.addRegister(0xFF04, this._registerRead.bind(this, "FF04", "DIV"), this._registerWrite.bind(this, "FF04", "DIV"));
-        this._memory.addRegister(0xFF05, this._registerRead.bind(this, "FF05", "TIMA"), this._registerWrite.bind(this, "FF05", "TIMA"));
-        this._memory.addRegister(0xFF06, this._registerRead.bind(this, "FF06", "TMA"), this._registerWrite.bind(this, "FF06", "TMA"));
-        this._memory.addRegister(0xFF07, this._registerRead.bind(this, "FF07", "TAC"), this._registerWrite.bind(this, "FF07", "TAC"));
-        this._memory.addRegister(0xFF0F, this._registerRead.bind(this, "FF0F", "IF"), this._registerWrite.bind(this, "FF0F", "IF"));
+        this._memory.addRegister(0xFF00, this._registerRead.bind(this, SpecialRegister.P1),    this._registerWrite.bind(this, SpecialRegister.P1));
+        this._memory.addRegister(0xFF01, this._registerRead.bind(this, SpecialRegister.SB),    this._registerWrite.bind(this, SpecialRegister.SB));
+        this._memory.addRegister(0xFF02, this._registerRead.bind(this, SpecialRegister.SC),    this._registerWrite.bind(this, SpecialRegister.SC));
+        this._memory.addRegister(0xFF04, this._registerRead.bind(this, SpecialRegister.DIV),   this._registerWrite.bind(this, SpecialRegister.DIV));
+        this._memory.addRegister(0xFF05, this._registerRead.bind(this, SpecialRegister.TIMA),  this._registerWrite.bind(this, SpecialRegister.TIMA));
+        this._memory.addRegister(0xFF06, this._registerRead.bind(this, SpecialRegister.TMA),   this._registerWrite.bind(this, SpecialRegister.TMA));
+        this._memory.addRegister(0xFF07, this._registerRead.bind(this, SpecialRegister.TAC),   this._registerWrite.bind(this, SpecialRegister.TAC));
+        this._memory.addRegister(0xFF0F, this._registerRead.bind(this, SpecialRegister.IF),    this._registerWrite.bind(this, SpecialRegister.IF));
+        this._memory.addRegister(0xFFFF, this._registerRead.bind(this, SpecialRegister.IE),    this._registerWrite.bind(this, SpecialRegister.IE));
 
         this._registerMap = {
             0: "BC",
@@ -89,54 +153,122 @@ export class CPU {
             6: "F",
             7: "A"
         };
+
+        this._romType = RomType.UNKNOWN;
     }
 
-    private _registerRead(addr: string, register: string): number {
-        // console.log(`read register: 0x${addr}, ${register}`);
-        return 0;
-    }
+    private _registerRead(register: SpecialRegister): number {
+        const val = this._specialRegisters[register];
 
-    private _registerWrite(addr: string, register: string, val: number): void {
-        if (register === "SB") {
-            this._specialRegisters[0] = val;
-        } else if (register === "SC") {
-            this._specialRegisters[1] = val;
-
-            if (val === 0x81) {
-                if (this._specialRegisters[0] === 10) {
-                    if (this._debugString.trim().length > 0) {
-                        console.log(this._debugString);
-                    }
-                    
-                    this._debugString = "";
-                } else {
-                    this._debugString += String.fromCharCode(this._specialRegisters[0]);
-                }
-            }
+        switch (register) {
+            case SpecialRegister.IF:
+                // console.log(`IFR = ${val.toString(16)}`);
+                break;
         }
 
-        // console.log(`write register: 0x${addr}, ${register}, ${val.toString(16)}`);
+        return val;
+    }
+
+    private _registerWrite(register: SpecialRegister, val: number): void {
+        this._specialRegisters[register] = val;
+
+        switch (register) {
+            case SpecialRegister.SC:
+                if (val === 0x81) {
+                    if (this._specialRegisters[SpecialRegister.SB] === 10) {
+                        if (this._debugString.trim().length > 0) {
+                            console.log(this._debugString);
+                        }
+
+                        this._debugString = "";
+                    } else {
+                        this._debugString += String.fromCharCode(this._specialRegisters[SpecialRegister.SB]);
+                    }
+                }
+                break;
+            
+            case SpecialRegister.TAC:
+                switch (val & 0x03) {
+                    case 0:
+                        this._ticksPerClockIncrement = 1024;
+                        break;
+                    
+                    case 1:
+                        this._ticksPerClockIncrement = 16;
+                        break;
+                    
+                    case 2:
+                        this._ticksPerClockIncrement = 64;
+                        break;
+                    
+                    case 3:
+                        this._ticksPerClockIncrement = 256;
+                        break;
+                }
+
+                this._timerEnabled = (val & 0x04) != 0;
+
+                this._tickTimer(0);
+                break;
+            
+            // Writing any value to DIV resets it
+            case SpecialRegister.DIV:
+                this._specialRegisters[register] = 0;
+                break;
+            
+            case SpecialRegister.IF:
+                // console.log(`IFW = ${val.toString(16)}`);
+                break;
+        }
     }
 
     public loadBios(): boolean {
+        let buffer: Buffer = null;
+
         if (process.env.APP_ENV === "browser") {
-            return this._memory.mapBuffer(require("../file-loader.js!../dist/bios/bios.bin"), 0x0000);
+            buffer = require("../file-loader.js!../dist/bios/bios.bin");
+        } else {
+            let fs = "fs";
+            buffer = require(fs).readFileSync("bios/bios.bin");
         }
 
-        let fs = "fs";
-        return this._memory.mapBuffer(require(fs).readFileSync("bios/bios.bin"), 0x0000);
+        return this._memory.setBios(buffer);
     }
 
     public loadRom(): boolean {
+        let buffer: Buffer = null;
+
         if (process.env.APP_ENV === "browser") {
-            return this._memory.mapBuffer(require("../file-loader.js!../dist/roms/03-op sp,hl.gb"), 0x0000);
+            buffer = require("../file-loader.js!../dist/roms/tetris.gb");
+        } else {
+            let fs = "fs";
+            buffer = require(fs).readFileSync("roms/cpu_instrs.gb");
         }
 
-        let fs = "fs";
-        return this._memory.mapBuffer(require(fs).readFileSync("roms/03-op sp,hl.gb"), 0x0000);
+        this._romType = buffer[0x147];
+        this._memory.createController(this._romType);
+
+        return this._memory.setRom(buffer);
     }
 
     public step(): boolean {
+        if (this._halt) {
+            return false;
+        }
+
+        if (this._waitForInterrupt) {
+            this._cycles += 4;
+            this._display.tick(4);
+            this._audio.tick(4);
+            this._memory.tick(4);
+            this._tickTimer(4);
+            this.checkInterrupt();
+
+            if (this._waitForInterrupt) {
+                return true;
+            }
+        }
+
         const opcode = this.readu8();
 
         if (opcode === 0xCB) {
@@ -147,13 +279,18 @@ export class CPU {
                 return false;
             }
 
-            // this._debug.instruction(opcode, opcode2);
+            if (this._enableDebugging) {
+                this._debug.instruction(opcode, opcode2);
+            }
 
             _cbopcodes[opcode2][1](opcode2, this);
 
             this._cycles += _cbopcodes[opcode2][0];
             this._display.tick(_cbopcodes[opcode2][0]);
             this._audio.tick(_cbopcodes[opcode2][0]);
+            this._memory.tick(_cbopcodes[opcode2][0]);
+            this._tickTimer(_cbopcodes[opcode2][0]);
+
             this.checkInterrupt();
             return true;
         }
@@ -163,12 +300,18 @@ export class CPU {
             return false;
         }
 
-        // this._debug.instruction(opcode);
+        if (this._enableDebugging) {
+            this._debug.instruction(opcode);
+        }
+
         _opcodes[opcode][1](opcode, this);
 
         this._cycles += _opcodes[opcode][0];
         this._display.tick(_opcodes[opcode][0]);
         this._audio.tick(_opcodes[opcode][0]);
+        this._memory.tick(_opcodes[opcode][0]);
+        this._tickTimer(_opcodes[opcode][0]);
+
         this.checkInterrupt();
         return true;
     }
@@ -218,27 +361,48 @@ export class CPU {
     }
 
     public pushStack(val: number): void {
-        this.MMU.write8(this.SP, val & 0xFF);
-        this.SP -= 1;
+        this.SP--;
         this.MMU.write8(this.SP, val >> 8);
-        this.SP -= 1;
+        this.SP--;
+        this.MMU.write8(this.SP, val & 0xFF);
     }
 
     public popStack(): number {
-        this.SP++;
         const val1 = this.MMU.read8(this.SP);
         this.SP++;
         const val2 = this.MMU.read8(this.SP);
+        this.SP++;
 
-        return (val1 << 8) | val2;
+        return (val2 << 8) | val1;
     }
 
+    public isInterruptEnabled(interrupt: Interrupt): boolean {
+        return (this._specialRegisters[SpecialRegister.IE] & (1 << interrupt)) !== 0;
+    }
+    
     public checkInterrupt(): void {
-        // todo
-    }
+        if (!this._enableInterrupts) {
+            return;
+        }
 
-    public triggerInterrupt(interrupt: InterruptType): void {
-        // todo
+        const interruptFlag = this._specialRegisters[SpecialRegister.IF] & this._specialRegisters[SpecialRegister.IE];
+
+        if (interruptFlag & (1 << Interrupt.VBlank)) {
+            this._fireInterrupt(Interrupt.VBlank);
+            this._specialRegisters[SpecialRegister.IF] &= ~(1 << Interrupt.VBlank);
+        } else if (interruptFlag & (1 << Interrupt.LCDStat)) {
+            this._fireInterrupt(Interrupt.LCDStat);
+            this._specialRegisters[SpecialRegister.IF] &= ~(1 << Interrupt.LCDStat);
+        } else if (interruptFlag & (1 << Interrupt.Timer)) {
+            this._fireInterrupt(Interrupt.Timer);
+            this._specialRegisters[SpecialRegister.IF] &= ~(1 << Interrupt.Timer);
+        } else if (interruptFlag & (1 << Interrupt.Serial)) {
+            this._fireInterrupt(Interrupt.Serial);
+            this._specialRegisters[SpecialRegister.IF] &= ~(1 << Interrupt.Serial);
+        } else if (interruptFlag & (1 << Interrupt.Joypad)) {
+            this._fireInterrupt(Interrupt.Joypad);
+            this._specialRegisters[SpecialRegister.IF] &= ~(1 << Interrupt.Joypad);
+        }
     }
 
     public readRegisterType(val: number, useAF: boolean): string {
@@ -253,6 +417,48 @@ export class CPU {
         return this._byteRegisterMap[val & 0x07];
     }
 
+    public requestInterrupt(interrupt: Interrupt): void {
+        this._specialRegisters[SpecialRegister.IF] |= 1 << interrupt;
+        this.waitForInterrupt = false;
+    }
+
+    private _tickTimer(cycles: number): void {
+        this._divCycles += cycles;
+
+        while (this._divCycles >= 256) {
+            this._divCycles -= 256;
+            this._specialRegisters[SpecialRegister.DIV] = (this._specialRegisters[SpecialRegister.DIV] + 1) & 0xFF;
+        }
+
+        if (!this._timerEnabled) {
+            return;
+        }
+
+        this._timerCycles += cycles;
+
+        while (this._timerCycles >= this._ticksPerClockIncrement) {
+            this._timerCycles -= this._ticksPerClockIncrement;
+
+            // console.log(`tick2: ${this._timerCycles}, ${this._ticksPerClockIncrement}, ${this._specialRegisters[SpecialRegister.TIMA]}, ${cycles}`);
+
+            if (this._specialRegisters[SpecialRegister.TIMA] === 0xFF) {
+                this._specialRegisters[SpecialRegister.TIMA] = this._specialRegisters[SpecialRegister.TMA];
+                this.requestInterrupt(Interrupt.Timer);
+
+                // this._halt = true;
+            } else {
+                this._specialRegisters[SpecialRegister.TIMA]++;
+            }
+        }
+    }
+
+    private _fireInterrupt(interrupt: Interrupt): void {
+        this.enableInterrupts = false;
+
+        this.pushStack(this.PC);
+        this.PC = 0x0040 + (interrupt * 8);
+    }
+
     private _log(opcode: number, isCB: boolean = false): void {
         if (isCB) {
             console.log(`Unknown cb opcode 0x${opcode.toString(16)}`);
@@ -261,12 +467,8 @@ export class CPU {
         }
     }
 
-    get checkZero() {
-        return this._checkZero;
-    }
-
-    set checkZero(val: boolean) {
-        this._checkZero = val;
+    get enableDebugging() {
+        return this._enableDebugging;
     }
 
     get enableInterrupts() {
@@ -275,6 +477,14 @@ export class CPU {
 
     set enableInterrupts(val: boolean) {
         this._enableInterrupts = val;
+    }
+
+    get waitForInterrupt() {
+        return this._waitForInterrupt;
+    }
+
+    set waitForInterrupt(val: boolean) {
+        this._waitForInterrupt = val;
     }
 
     get A() {
@@ -349,20 +559,32 @@ export class CPU {
         return this._cycles;
     }
 
+    get IF() {
+        return this._specialRegisters[SpecialRegister.IF];
+    }
+
+    get TIMA() {
+        return this._specialRegisters[SpecialRegister.TIMA];
+    }
+
+    get TMA() {
+        return this._specialRegisters[SpecialRegister.TMA];
+    }
+
+    get DIV() {
+        return this._specialRegisters[SpecialRegister.DIV];
+    }
+
+    get specialRegisters() {
+        return this._specialRegisters;
+    }
+
     set cycles(val: number) {
         this._cycles = val;
     }
 
     set A(val: number) {
         this._registers[Register.A] = val;
-
-        if (this.checkZero) {
-            if (this._registers[Register.A] === 0) {
-                this.enableFlag(Flags.ZeroFlag);
-            } else {
-                this.disableFlag(Flags.ZeroFlag);
-            }
-        }
     }
 
     set F(val: number) {
@@ -371,74 +593,26 @@ export class CPU {
 
     set B(val: number) {
         this._registers[Register.B] = val;
-
-        if (this.checkZero) {
-            if (this._registers[Register.B] === 0) {
-                this.enableFlag(Flags.ZeroFlag);
-            } else {
-                this.disableFlag(Flags.ZeroFlag);
-            }
-        }
     }
 
     set C(val: number) {
         this._registers[Register.C] = val;
-
-        if (this.checkZero) {
-            if (this._registers[Register.C] === 0) {
-                this.enableFlag(Flags.ZeroFlag);
-            } else {
-                this.disableFlag(Flags.ZeroFlag);
-            }
-        }
     }
 
     set D(val: number) {
         this._registers[Register.D] = val;
-
-        if (this.checkZero) {
-            if (this._registers[Register.D] === 0) {
-                this.enableFlag(Flags.ZeroFlag);
-            } else {
-                this.disableFlag(Flags.ZeroFlag);
-            }
-        }
     }
 
     set E(val: number) {
         this._registers[Register.E] = val;
-
-        if (this.checkZero) {
-            if (this._registers[Register.E] === 0) {
-                this.enableFlag(Flags.ZeroFlag);
-            } else {
-                this.disableFlag(Flags.ZeroFlag);
-            }
-        }
     }
     
     set H(val: number) {
         this._registers[Register.H] = val;
-
-        if (this.checkZero) {
-            if (this._registers[Register.H] === 0) {
-                this.enableFlag(Flags.ZeroFlag);
-            } else {
-                this.disableFlag(Flags.ZeroFlag);
-            }
-        }
     }
 
     set L(val: number) {
         this._registers[Register.L] = val;
-
-        if (this.checkZero) {
-            if (this._registers[Register.L] === 0) {
-                this.enableFlag(Flags.ZeroFlag);
-            } else {
-                this.disableFlag(Flags.ZeroFlag);
-            }
-        }
     }
 
     set AF(val: number) {

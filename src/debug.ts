@@ -107,7 +107,8 @@ export class Debug
                 "DE": this._cpu.DE,
                 "HL": this._cpu.HL,
                 "SP": this._cpu.SP,
-                "PC": this._cpu.PC
+                "PC": this._cpu.PC,
+                "IF": this._cpu.IF
             },
             executed: 1,
             callstack: null
@@ -145,6 +146,11 @@ export class Debug
         }
     }
 
+    public log(msg: string): void {
+        let line: string = "-".repeat(5) + " " + msg + "\r\n";
+        fs.writeSync(this._trace, line);
+    }
+
     private debug(instruction: IInstruction): void {
         const registers = {
             "A": instruction.state.A.toString(16),
@@ -156,7 +162,12 @@ export class Debug
             "H": instruction.state.H.toString(16),
             "L": instruction.state.L.toString(16),
             "LY": this._cpu.Display.LY,
-            "SP": instruction.state.SP.toString(16)
+            "AF": instruction.state.AF.toString(16),
+            "BC": instruction.state.BC.toString(16),
+            "DE": instruction.state.DE.toString(16),
+            "HL": instruction.state.HL.toString(16),
+            "SP": instruction.state.SP.toString(16),
+            "IF": instruction.state.IF.toString(16)
         };
 
         let regs = [];

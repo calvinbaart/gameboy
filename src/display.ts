@@ -1,4 +1,4 @@
-import { CPU } from "./cpu";
+import { CPU, SpecialRegister, Interrupt } from "./cpu";
 const document = require("./browser.js");
 
 const GameboyColorPalette = [
@@ -127,6 +127,7 @@ export class Display {
                         this._vblank = 0;
 
                         this.mode = DisplayMode.VBlank;
+                        this._cpu.requestInterrupt(Interrupt.VBlank);
                     } else {
                         this.mode = DisplayMode.ReadingOAM;
                     }
@@ -208,10 +209,17 @@ export class Display {
     }
 
     private _readRegister(register: DisplayRegister): number {
+        // console.log(`${register.toString(16)} (R): ${this._registers[register].toString(16)}`);
         return this._registers[register];
     }
 
     private _writeRegister(register: DisplayRegister, value: number): void {
+        switch (register) {
+            case DisplayRegister.DMA:
+                this._cpu.MMU.performOAMDMATransfer(value * 0x100);
+                break;
+        }
+
         this._registers[register] = value;
     }
 
