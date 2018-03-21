@@ -1,6 +1,14 @@
 # gameboy
 Gameboy emulator written in Typescript
 
-Currently only capable of running the bootstrap rom:
+## Status:
+- All opcodes are implemented and deemed correct by Blargg tests
+- MBC1 is fully implemented
+- MBC3 is partially implemented
+- Only-background tilesets are rendered, sprites are unimplemented.
+- Audio is unimplemented
 
-![Bootstrap Rom](https://puu.sh/yGzlF/6913005805.png)
+## Screenshots:
+
+![Bootstrap Rom](https://puu.sh/zMjpp/9239c6c7cd.png)
+![cpu_instrs](https://puu.sh/zMjkr/42f85b41ea.png)
