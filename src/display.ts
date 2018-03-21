@@ -81,6 +81,11 @@ export class Display {
             this._framebuffer[i + 3] = 255;
         }
 
+        this.BGP = 0xFC;
+        this.SCX = 0;
+        this.SCY = 0;
+        this.LY = 0x91;
+
         document.getElementById("emulator").appendChild(tmp);
     }
 
@@ -159,48 +164,44 @@ export class Display {
     }
 
     private _renderScanline(): void {
-        const _y = this.LY;
+        this._renderBackground();
+        // this._renderWindow();
+        // this._renderSprites();
+    }
 
-        const tileY = (Math.floor(_y / 8) % 32);
-        const tileYOffset = _y % 8;
+    private _renderBackground(): void {
+        const base = this._backgroundTilemap ? 0x9C00 : 0x9800;
+        const tileBase = this._activeTileset ? 0x8000 : 0x9000;
 
-        let base = 0x9800;
+        const tileY = ((((this.LY + this.SCY) / 8) % 32)) & 0xFF;
+        const tileYOffset = ((this.LY + this.SCY) % 8) & 0xFF;
 
-        if (this._backgroundTilemap === 1) {
-            base = 0x9C00;
-        }
+        const palette = [
+            GameboyColorPalette[this.BGP & 0x03],
+            GameboyColorPalette[(this.BGP >> 2) & 0x03],
+            GameboyColorPalette[(this.BGP >> 4) & 0x03],
+            GameboyColorPalette[(this.BGP >> 6) & 0x03],
+        ];
 
-        for (let x = 0; x < 20; x++) {
-            const tileX = x;
-            let tileIndex = this._cpu.MMU.read8(base + (tileY * 32) + tileX);
-            let tileBase = 0x8800;
+        for (let x = 0; x < 160; x++) {
+            const tileX = (((this.SCX + x) / 8) % 32) & 0xFF;
+            const tileNumber = this._cpu.MMU.read8(base + (tileY * 32) + tileX);
+            const tileAddr = tileBase + tileNumber * 0x10 + (tileYOffset * 2);
 
-            if (this._activeTileset === 1) {
-                tileBase = 0x8000;
-            }
+            const byte1 = this._cpu.MMU.read8(tileAddr);
+            const byte2 = this._cpu.MMU.read8(tileAddr + 1);
 
-            let addr = tileBase + (tileIndex * 16);
+            const bit = (7 - ((this.SCX + x) % 8)) & 0xFF;
+            const lo = (byte2 & (1 << bit)) ? 0x01 : 0x00;
+            const hi = (byte1 & (1 << bit)) ? 0x02 : 0x00;
 
-            let ty = _y - (tileY * 8);
-            const byte1 = this._cpu.MMU.read8(addr + (2 * ty));
-            const byte2 = this._cpu.MMU.read8(addr + (2 * ty) + 1);
+            const color = palette[lo + hi];
+            const index = ((this.LY * 160) + x) * 4;
 
-            for (let tx = 0; tx < 8; tx++) {
-                const bit = 7 - tx;
-                const lo = (byte2 & (1 << bit)) ? 0x01 : 0x00;
-                const hi = (byte1 & (1 << bit)) ? 0x02 : 0x00;
-
-                let _tx = (tileX * 8 + tx + this.SCX) % 256;
-                let _ty = (tileY * 8 + ty + (256 - this.SCY)) % 256;
-
-                let color = GameboyColorPalette[lo + hi];
-                let index = ((_ty * 160) + _tx) * 4;
-
-                this._framebuffer[index + 0] = color;
-                this._framebuffer[index + 1] = color;
-                this._framebuffer[index + 2] = color;
-                this._framebuffer[index + 3] = 255;
-            }
+            this._framebuffer[index + 0] = color;
+            this._framebuffer[index + 1] = color;
+            this._framebuffer[index + 2] = color;
+            this._framebuffer[index + 3] = 255;
         }
     }
 
@@ -216,7 +217,9 @@ export class Display {
     private _writeRegister(register: DisplayRegister, value: number): void {
         switch (register) {
             case DisplayRegister.DMA:
-                this._cpu.MMU.performOAMDMATransfer(value * 0x100);
+                if (this.mode === DisplayMode.HBlank) {
+                    this._cpu.MMU.performOAMDMATransfer(value * 0x100);
+                }    
                 break;
         }
 
@@ -245,6 +248,14 @@ export class Display {
 
     public set SCY(val: number) {
         this._registers[DisplayRegister.SCY] = val;
+    }
+
+    public get BGP() {
+        return this._registers[DisplayRegister.BGP];
+    }
+
+    public set BGP(val: number) {
+        this._registers[DisplayRegister.BGP] = val;
     }
 
     public get mode() {

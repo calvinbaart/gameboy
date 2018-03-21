@@ -229,10 +229,16 @@ export class Memory
 
     public performOAMDMATransfer(position: number): void
     {
+        if (this._oamDMATransferInProgress) {
+            return;
+        }
+
+        console.log(`performing OAM DMA transfer ${position.toString(16)}-${(position + 0x9F).toString(16)} -> FE00-FE9F`);
+
         this._oamDMATransferInProgress = true;
         this._oamDMACycles = 0;
 
-        for (let i = 0; i < 0x100; i++) {
+        for (let i = 0; i <= 0x9F; i++) {
             this._oamram[i] = this._controller.read(position + i);
         }
     }
@@ -245,8 +251,9 @@ export class Memory
 
         this._oamDMACycles += cycles;
 
-        if (this._oamDMACycles >= 160) {
+        if (this._oamDMACycles >= 12) {
             this._oamDMATransferInProgress = false;
+            console.log("OAM DMA transfer done.");
         }
     }
 }
