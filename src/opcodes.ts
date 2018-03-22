@@ -1135,6 +1135,7 @@ export class Opcodes {
     @Opcode(0xD9, 16, "RETI")
     public static RETI_0xD9(opcode: number, cpu: CPU): void {
         cpu.PC = cpu.popStack();
+        cpu.enableInterrupts = true;
     }
 
     @Opcode(0xF0, 12, "LDH A,(a8)")

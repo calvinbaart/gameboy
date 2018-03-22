@@ -4,6 +4,17 @@ import { Display } from "./display";
 import { Audio } from "./audio";
 import { Debug } from "./debug";
 
+export enum Key {
+    A = 4,
+    B = 5,
+    Start = 7,
+    Select = 6,
+    Up = 2,
+    Down = 3,
+    Left = 1,
+    Right = 0
+}
+
 export enum SpecialRegister {
     P1,
     SB,
@@ -103,6 +114,9 @@ export class CPU {
     private _divCycles: number;
     private _timerCycles: number;
 
+    // Input
+    private _joypadState: number;
+
     constructor() {
         new Opcodes();
         new OpcodesCB();
@@ -155,10 +169,13 @@ export class CPU {
         };
 
         this._romType = RomType.UNKNOWN;
+        this._joypadState = 0xFF;
+
+        this.P1 = 0xFF;
     }
 
     private _registerRead(register: SpecialRegister): number {
-        const val = this._specialRegisters[register];
+        let val = this._specialRegisters[register];
 
         switch (register) {
             case SpecialRegister.IF:
@@ -239,7 +256,7 @@ export class CPU {
         let buffer: Buffer = null;
 
         if (process.env.APP_ENV === "browser") {
-            buffer = require("../file-loader.js!../dist/roms/drmario.gb");
+            buffer = require("../file-loader.js!../dist/roms/opus5.gb");
         } else {
             let fs = "fs";
             buffer = require(fs).readFileSync("roms/cpu_instrs.gb");
@@ -262,6 +279,7 @@ export class CPU {
             this._audio.tick(4);
             this._memory.tick(4);
             this._tickTimer(4);
+            this._tickInput(4);
             this.checkInterrupt();
 
             if (this._waitForInterrupt) {
@@ -290,6 +308,7 @@ export class CPU {
             this._audio.tick(_cbopcodes[opcode2][0]);
             this._memory.tick(_cbopcodes[opcode2][0]);
             this._tickTimer(_cbopcodes[opcode2][0]);
+            this._tickInput(_cbopcodes[opcode2][0]);
 
             this.checkInterrupt();
             return true;
@@ -311,6 +330,7 @@ export class CPU {
         this._audio.tick(_opcodes[opcode][0]);
         this._memory.tick(_opcodes[opcode][0]);
         this._tickTimer(_opcodes[opcode][0]);
+        this._tickInput(_opcodes[opcode][0]);
 
         this.checkInterrupt();
         return true;
@@ -420,6 +440,40 @@ export class CPU {
     public requestInterrupt(interrupt: Interrupt): void {
         this._specialRegisters[SpecialRegister.IF] |= 1 << interrupt;
         this.waitForInterrupt = false;
+    }
+
+    public keyPressed(key: Key): void {
+        this._joypadState &= ~(1 << key);
+    }
+
+    public keyReleased(key: Key): void {
+        this._joypadState |= 1 << key;
+    }
+
+    private _tickInput(cycles: number): void {
+        let current = this.P1 & 0xF0;
+
+        switch (current & 0x30) {
+            case 0x10:
+                let topJoypad = (this._joypadState >> 4) & 0x0F;
+                current |= topJoypad;
+                break;
+            
+            case 0x20:
+                let bottomJoypad = this._joypadState & 0x0F;
+                current |= bottomJoypad;
+                break;
+            
+            case 0x30:
+                current |= 0x0F;
+                break;
+        }
+
+        if ((this.P1 & ~current & 0x0F) != 0) {
+            this.requestInterrupt(Interrupt.Joypad);
+        }
+
+        this.P1 = current;
     }
 
     private _tickTimer(cycles: number): void {
@@ -573,6 +627,14 @@ export class CPU {
 
     get DIV() {
         return this._specialRegisters[SpecialRegister.DIV];
+    }
+
+    get P1() {
+        return this._registerRead(SpecialRegister.P1);
+    }
+
+    set P1(val: number) {
+        this._registerWrite(SpecialRegister.P1, val);
     }
 
     get specialRegisters() {

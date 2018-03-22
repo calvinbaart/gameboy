@@ -40,6 +40,7 @@ export class Display {
     private _cycles: number;
     private _cyclesExtra: number;
     private _vblank: number;
+    private _scanlineTransferred: boolean;
 
     constructor(cpu: CPU) {
         this._cpu = cpu;
@@ -47,6 +48,7 @@ export class Display {
         this._cycles = 0;
         this._cyclesExtra = 0;
         this._vblank = 0;
+        this._scanlineTransferred = false;
 
         this._cpu.MMU.addRegister(0xFF40, this._readRegister.bind(this, DisplayRegister.LCDC), this._writeRegister.bind(this, DisplayRegister.LCDC));
         this._cpu.MMU.addRegister(0xFF41, this._readRegister.bind(this, DisplayRegister.STAT), this._writeRegister.bind(this, DisplayRegister.STAT));
@@ -102,30 +104,15 @@ export class Display {
         this._cycles += delta;
         this._cyclesExtra += delta;
 
+        if (this.LY === this.LYC) {
+            this.STAT |= 0x04;
+        }
+
         switch (this.mode) {
-            case DisplayMode.ReadingOAM:
-                if (this._cycles >= 77) {
-                    this._cycles -= 77;
-                    this.mode = DisplayMode.ReadingOAMVRAM;
-                }
-
-                break;
-        
-            case DisplayMode.ReadingOAMVRAM:
-                this._renderScanline();
-
-                if (this._cycles >= 169) {
-                    this._cycles -= 169;
-                    this.mode = DisplayMode.HBlank;
-                }
-
-                break;
-        
             case DisplayMode.HBlank:
-                if (this._cycles >= 201) {
-                    this._cycles -= 201;
+                if (this._cycles >= 204) {
+                    this._cycles -= 204;
                     this.LY++;
-                    this._renderScanline();
 
                     if (this.LY === 144) {
                         this._render();
@@ -133,13 +120,24 @@ export class Display {
 
                         this.mode = DisplayMode.VBlank;
                         this._cpu.requestInterrupt(Interrupt.VBlank);
+
+                        if ((this.LCDC & 0x20) !== 0) {
+                            this._cpu.requestInterrupt(Interrupt.LCDStat);
+                        }
                     } else {
+                        if ((this.LCDC & 0x30) !== 0) {
+                            this._cpu.requestInterrupt(Interrupt.LCDStat);
+                        }
+
+                        if ((this.LCDC & 0x40) !== 0 && this.LY === this.LYC) {
+                            this._cpu.requestInterrupt(Interrupt.LCDStat);
+                        }
+
                         this.mode = DisplayMode.ReadingOAM;
                     }
                 }
-
                 break;
-        
+
             case DisplayMode.VBlank:
                 while (this._cyclesExtra > 456) {
                     this._cyclesExtra -= 456;
@@ -150,7 +148,30 @@ export class Display {
                     this._cycles -= 4560;
                     this.mode = DisplayMode.ReadingOAM;
                 }
+                break;
 
+            case DisplayMode.ReadingOAM:
+                if (this._cycles >= 80) {
+                    this._cycles -= 80;
+                    this._scanlineTransferred = false;
+                    this.mode = DisplayMode.ReadingOAMVRAM;
+                }
+                break;
+
+            case DisplayMode.ReadingOAMVRAM:
+                if (this._cycles >= 160 && !this._scanlineTransferred) {
+                    this._renderScanline();
+                    this._scanlineTransferred = true;
+                }    
+
+                if (this._cycles >= 172) {
+                    this._cycles -= 172;
+                    this.mode = DisplayMode.HBlank;
+
+                    if ((this.LCDC & 0x10) !== 0) {
+                        this._cpu.requestInterrupt(Interrupt.LCDStat);
+                    }
+                }
                 break;
         }
 
@@ -173,29 +194,31 @@ export class Display {
         const base = this._backgroundTilemap ? 0x9C00 : 0x9800;
         const tileBase = this._activeTileset ? 0x8000 : 0x9000;
 
-        const tileY = ((((this.LY + this.SCY) / 8) % 32)) & 0xFF;
-        const tileYOffset = ((this.LY + this.SCY) % 8) & 0xFF;
+        const tileY = Math.floor((this.LY + this.SCY) / 8) % 32;
+        const tileYOffset = (this.LY + this.SCY) % 8;
 
-        const palette = [
-            GameboyColorPalette[this.BGP & 0x03],
-            GameboyColorPalette[(this.BGP >> 2) & 0x03],
-            GameboyColorPalette[(this.BGP >> 4) & 0x03],
-            GameboyColorPalette[(this.BGP >> 6) & 0x03],
-        ];
+        let tx = 0;
+        let byte1 = 0;
+        let byte2 = 0;
 
         for (let x = 0; x < 160; x++) {
-            const tileX = (((this.SCX + x) / 8) % 32) & 0xFF;
-            const tileNumber = this._cpu.MMU.read8(base + (tileY * 32) + tileX);
-            const tileAddr = tileBase + tileNumber * 0x10 + (tileYOffset * 2);
+            const tileX = Math.floor((this.SCX + x) / 8) % 32;
 
-            const byte1 = this._cpu.MMU.read8(tileAddr);
-            const byte2 = this._cpu.MMU.read8(tileAddr + 1);
+            if (tx !== tileX) {
+                const tileNumber = this._cpu.MMU.read8(base + (tileY * 32) + tileX);
+                const tileAddr = tileBase + tileNumber * 0x10 + (tileYOffset * 2);
 
-            const bit = (7 - ((this.SCX + x) % 8)) & 0xFF;
+                byte1 = this._cpu.MMU.read8(tileAddr);
+                byte2 = this._cpu.MMU.read8(tileAddr + 1);
+
+                tx = tileX;
+            }
+
+            const bit = 7 - ((this.SCX + x) % 8);
             const lo = (byte2 & (1 << bit)) ? 0x01 : 0x00;
             const hi = (byte1 & (1 << bit)) ? 0x02 : 0x00;
 
-            const color = palette[lo + hi];
+            const color = GameboyColorPalette[(this.BGP >> ((lo | hi) * 2)) & 0x03];
             const index = ((this.LY * 160) + x) * 4;
 
             this._framebuffer[index + 0] = color;
@@ -221,6 +244,10 @@ export class Display {
                     this._cpu.MMU.performOAMDMATransfer(value * 0x100);
                 }    
                 break;
+            
+            // case DisplayRegister.BGP:
+            //     console.log(`BGP: ${value.toString(16)}`);
+            //     break;
         }
 
         this._registers[register] = value;
@@ -232,6 +259,14 @@ export class Display {
 
     public set LY(val: number) {
         this._registers[DisplayRegister.LY] = val;
+    }
+
+    public get LYC() {
+        return this._registers[DisplayRegister.LYC];
+    }
+
+    public set LYC(val: number) {
+        this._registers[DisplayRegister.LYC] = val;
     }
 
     public get SCX() {
@@ -256,6 +291,22 @@ export class Display {
 
     public set BGP(val: number) {
         this._registers[DisplayRegister.BGP] = val;
+    }
+
+    public get LCDC() {
+        return this._registers[DisplayRegister.LCDC];
+    }
+
+    public set LCDC(val: number) {
+        this._registers[DisplayRegister.LCDC] = val;
+    }
+
+    public get STAT() {
+        return this._registers[DisplayRegister.STAT];
+    }
+
+    public set STAT(val: number) {
+        this._registers[DisplayRegister.STAT] = val;
     }
 
     public get mode() {

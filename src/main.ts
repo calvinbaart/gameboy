@@ -1,4 +1,4 @@
-import { CPU } from "./cpu";
+import { CPU, Key } from "./cpu";
 
 const cpu = new CPU();
 if (!cpu.loadBios()) {
@@ -20,6 +20,78 @@ if (process.env.APP_ENV !== "browser") {
     };
 } else {
     global = window;
+
+    document.addEventListener("keyup", (e) => {
+        switch (e.key) {
+            case "z":
+                cpu.keyReleased(Key.A);
+                break;
+            
+            case "x":
+                cpu.keyReleased(Key.B);
+                break;
+            
+            case "c":
+                cpu.keyReleased(Key.Start);
+                break;
+
+            case "v":
+                cpu.keyReleased(Key.Select);
+                break;
+            
+            case "ArrowUp":
+                cpu.keyReleased(Key.Up);
+                break;
+
+            case "ArrowDown":
+                cpu.keyReleased(Key.Down);
+                break;
+
+            case "ArrowLeft":
+                cpu.keyReleased(Key.Left);
+                break;
+
+            case "ArrowRight":
+                cpu.keyReleased(Key.Right);
+                break;
+        }
+    });
+
+    document.addEventListener("keydown", (e) => {
+        switch (e.key) {
+            case "z":
+                cpu.keyPressed(Key.A);
+                break;
+
+            case "x":
+                cpu.keyPressed(Key.B);
+                break;
+
+            case "c":
+                cpu.keyPressed(Key.Start);
+                break;
+
+            case "v":
+                cpu.keyPressed(Key.Select);
+                break;
+
+            case "ArrowUp":
+                cpu.keyPressed(Key.Up);
+                break;
+
+            case "ArrowDown":
+                cpu.keyPressed(Key.Down);
+                break;
+
+            case "ArrowLeft":
+                cpu.keyPressed(Key.Left);
+                break;
+
+            case "ArrowRight":
+                cpu.keyPressed(Key.Right);
+                break;
+        }
+    });
 }
 
 let stopEmulation = false;
@@ -45,4 +117,4 @@ const loop = () => {
     global.requestAnimationFrame(loop);
 };
 
-global.requestAnimationFrame(loop);
+loop();

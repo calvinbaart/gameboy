@@ -12,3 +12,6 @@ Gameboy emulator written in Typescript
 
 ![Bootstrap Rom](https://puu.sh/zMjpp/9239c6c7cd.png)
 ![cpu_instrs](https://puu.sh/zMjkr/42f85b41ea.png)
+![tetris](https://puu.sh/zN4jb/fefe56b167.png)
+![pokemon](https://puu.sh/zN4LW/d27d037379.png)
+![pokemon2](https://puu.sh/zN6ak/b6812a801c.png)
