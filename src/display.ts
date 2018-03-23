@@ -174,23 +174,38 @@ export class Display {
                 }
                 break;
         }
-
-        // if (control & (1 << 0)) {
-        //     this._renderTiles();
-        // }
-
-        // if (control & (1 << 1)) {
-        //     this._renderSprites();
-        // }
     }
 
     private _renderScanline(): void {
         this._renderBackground();
-        // this._renderWindow();
-        // this._renderSprites();
+        this._renderWindow();
+        this._renderSprites();
+    }
+
+    private _renderSprites(): void {
+        if ((this.LCDC & (1 << 1)) === 0) {
+            return;
+        }
+
+        // todo
+    }
+
+    private _renderWindow(): void {
+        if ((this.LCDC & (1 << 5)) === 0) {
+            return;
+        }
+
+        const base = this._windowTilemap ? 0x9C00 : 0x9800;
+        const tileBase = this._activeTileset ? 0x8000 : 0x9000;
+
+        // todo
     }
 
     private _renderBackground(): void {
+        if ((this.LCDC & (1 << 0)) === 0) {
+            return;
+        }
+
         const base = this._backgroundTilemap ? 0x9C00 : 0x9800;
         const tileBase = this._activeTileset ? 0x8000 : 0x9000;
 

@@ -256,7 +256,7 @@ export class CPU {
         let buffer: Buffer = null;
 
         if (process.env.APP_ENV === "browser") {
-            buffer = require("../file-loader.js!../dist/roms/SuperMarioLand.gb");
+            buffer = require("../file-loader.js!../dist/roms/pokemon.gb");
         } else {
             let fs = "fs";
             buffer = require(fs).readFileSync("roms/cpu_instrs.gb");
