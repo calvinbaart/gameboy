@@ -197,7 +197,7 @@ export class Display {
         const tileY = Math.floor((this.LY + this.SCY) / 8) % 32;
         const tileYOffset = (this.LY + this.SCY) % 8;
 
-        let tx = 0;
+        let tx = -1;
         let byte1 = 0;
         let byte2 = 0;
 
@@ -205,7 +205,14 @@ export class Display {
             const tileX = Math.floor((this.SCX + x) / 8) % 32;
 
             if (tx !== tileX) {
-                const tileNumber = this._cpu.MMU.read8(base + (tileY * 32) + tileX);
+                let tileNumber = this._cpu.MMU.read8(base + (tileY * 32) + tileX);
+
+                // Read tileValue as signed
+                if (!this._activeTileset) {
+                    let msb_mask = 1 << (8 - 1);
+                    tileNumber = (tileNumber ^ msb_mask) - msb_mask;
+                }
+
                 const tileAddr = tileBase + tileNumber * 0x10 + (tileYOffset * 2);
 
                 byte1 = this._cpu.MMU.read8(tileAddr);
@@ -215,10 +222,9 @@ export class Display {
             }
 
             const bit = 7 - ((this.SCX + x) % 8);
-            const lo = (byte2 & (1 << bit)) ? 0x01 : 0x00;
-            const hi = (byte1 & (1 << bit)) ? 0x02 : 0x00;
 
-            const color = GameboyColorPalette[(this.BGP >> ((lo | hi) * 2)) & 0x03];
+            const colorNum = (this._bitGet(byte2, bit) << 1) | (this._bitGet(byte1, bit));
+            const color = this._getColor(this.BGP, colorNum);
             const index = ((this.LY * 160) + x) * 4;
 
             this._framebuffer[index + 0] = color;
@@ -226,6 +232,18 @@ export class Display {
             this._framebuffer[index + 2] = color;
             this._framebuffer[index + 3] = 255;
         }
+    }
+
+    private _bitGet(input: number, bit: number): number {
+        return input & (1 << bit) ? 1 : 0;
+    }
+
+    private _getColor(palette: number, bit: number): number {
+        const hi = ((bit << 1) + 1);
+        const lo = (bit << 1);
+        const color = (this._bitGet(palette, hi) << 1) | (this._bitGet(palette, lo));
+
+        return GameboyColorPalette[color];
     }
 
     private _render(): void {

@@ -256,7 +256,7 @@ export class CPU {
         let buffer: Buffer = null;
 
         if (process.env.APP_ENV === "browser") {
-            buffer = require("../file-loader.js!../dist/roms/opus5.gb");
+            buffer = require("../file-loader.js!../dist/roms/SuperMarioLand.gb");
         } else {
             let fs = "fs";
             buffer = require(fs).readFileSync("roms/cpu_instrs.gb");
@@ -438,8 +438,13 @@ export class CPU {
     }
 
     public requestInterrupt(interrupt: Interrupt): void {
-        this._specialRegisters[SpecialRegister.IF] |= 1 << interrupt;
-        this.waitForInterrupt = false;
+        const mask = 1 << interrupt;
+
+        if (mask & this._specialRegisters[SpecialRegister.IE]) {
+            this.waitForInterrupt = false;
+        }
+
+        this._specialRegisters[SpecialRegister.IF] |= mask;
     }
 
     public keyPressed(key: Key): void {
