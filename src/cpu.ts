@@ -3,6 +3,7 @@ import { Opcodes, OpcodesCB, _opcodes, _cbopcodes } from "./opcodes";
 import { Display } from "./display";
 import { Audio } from "./audio";
 import { Debug } from "./debug";
+import { Timer } from "./timer";
 
 export enum Key {
     A = 4,
@@ -19,10 +20,6 @@ export enum SpecialRegister {
     P1,
     SB,
     SC,
-    DIV,
-    TIMA,
-    TMA,
-    TAC,
     IF,
     IE
 }
@@ -89,8 +86,7 @@ export enum RomType {
 export class CPU {
     private _display: Display;
     private _audio: Audio;
-    private _debug: Debug;
-    private _enableDebugging: boolean;
+    private _timer: Timer;
     
     private _memory: Memory;
     private _registers: Uint8Array;
@@ -107,12 +103,10 @@ export class CPU {
 
     private _romType: RomType;
     private _halt: boolean;
-
-    // Timer
-    private _timerEnabled: boolean;
-    private _ticksPerClockIncrement: number;
-    private _divCycles: number;
-    private _timerCycles: number;
+    
+    private _currentOpcode: number;
+    private _currentOpcodePC: number;
+    private _currentOpcodeTicks: number;
 
     // Input
     private _joypadState: number;
@@ -124,29 +118,21 @@ export class CPU {
         this._memory = new Memory(this);
         this._display = new Display(this);
         this._audio = new Audio(this);
-        this._debug = new Debug(this);
-        this._enableDebugging = false;
+        this._timer = new Timer(this);
         this._waitForInterrupt = false;
         this._halt = false;
 
         this._specialRegisters = new Uint8Array(9);
         this._registers = new Uint8Array(8);
         this._registers16 = new Uint16Array(3);
-        this._cycles = 0;
-        this._divCycles = 0;
-        this._timerCycles = 0;
-        this._ticksPerClockIncrement = 1024;
 
         this._enableInterrupts = true;
         this._debugString = "";
+        this._cycles = 0;
 
         this._memory.addRegister(0xFF00, this._registerRead.bind(this, SpecialRegister.P1),    this._registerWrite.bind(this, SpecialRegister.P1));
         this._memory.addRegister(0xFF01, this._registerRead.bind(this, SpecialRegister.SB),    this._registerWrite.bind(this, SpecialRegister.SB));
         this._memory.addRegister(0xFF02, this._registerRead.bind(this, SpecialRegister.SC),    this._registerWrite.bind(this, SpecialRegister.SC));
-        this._memory.addRegister(0xFF04, this._registerRead.bind(this, SpecialRegister.DIV),   this._registerWrite.bind(this, SpecialRegister.DIV));
-        this._memory.addRegister(0xFF05, this._registerRead.bind(this, SpecialRegister.TIMA),  this._registerWrite.bind(this, SpecialRegister.TIMA));
-        this._memory.addRegister(0xFF06, this._registerRead.bind(this, SpecialRegister.TMA),   this._registerWrite.bind(this, SpecialRegister.TMA));
-        this._memory.addRegister(0xFF07, this._registerRead.bind(this, SpecialRegister.TAC),   this._registerWrite.bind(this, SpecialRegister.TAC));
         this._memory.addRegister(0xFF0F, this._registerRead.bind(this, SpecialRegister.IF),    this._registerWrite.bind(this, SpecialRegister.IF));
         this._memory.addRegister(0xFFFF, this._registerRead.bind(this, SpecialRegister.IE),    this._registerWrite.bind(this, SpecialRegister.IE));
 
@@ -179,7 +165,7 @@ export class CPU {
 
         switch (register) {
             case SpecialRegister.IF:
-                // console.log(`IFR = ${val.toString(16)}`);
+                console.log(`IFR = ${val.toString(16)}`);
                 break;
         }
 
@@ -202,35 +188,6 @@ export class CPU {
                         this._debugString += String.fromCharCode(this._specialRegisters[SpecialRegister.SB]);
                     }
                 }
-                break;
-            
-            case SpecialRegister.TAC:
-                switch (val & 0x03) {
-                    case 0:
-                        this._ticksPerClockIncrement = 1024;
-                        break;
-                    
-                    case 1:
-                        this._ticksPerClockIncrement = 16;
-                        break;
-                    
-                    case 2:
-                        this._ticksPerClockIncrement = 64;
-                        break;
-                    
-                    case 3:
-                        this._ticksPerClockIncrement = 256;
-                        break;
-                }
-
-                this._timerEnabled = (val & 0x04) != 0;
-
-                this._tickTimer(0);
-                break;
-            
-            // Writing any value to DIV resets it
-            case SpecialRegister.DIV:
-                this._specialRegisters[register] = 0;
                 break;
             
             case SpecialRegister.IF:
@@ -256,10 +213,10 @@ export class CPU {
         let buffer: Buffer = null;
 
         if (process.env.APP_ENV === "browser") {
-            buffer = require("../file-loader.js!../dist/roms/pokemon.gb");
+            buffer = require("../file-loader.js!../dist/roms/cpu_instrs.gb");
         } else {
             let fs = "fs";
-            buffer = require(fs).readFileSync("roms/cpu_instrs.gb");
+            buffer = require(fs).readFileSync("roms/mem_timing.gb");
         }
 
         this._romType = buffer[0x147];
@@ -275,19 +232,16 @@ export class CPU {
 
         if (this._waitForInterrupt) {
             this._cycles += 4;
-            this._display.tick(4);
-            this._audio.tick(4);
-            this._memory.tick(4);
-            this._tickTimer(4);
-            this._tickInput(4);
-            this.checkInterrupt();
+            this._tickInternal(4);
 
             if (this._waitForInterrupt) {
                 return true;
             }
         }
 
+        this._currentOpcodePC = this.PC;
         const opcode = this.readu8();
+        this._currentOpcode = opcode;
 
         if (opcode === 0xCB) {
             const opcode2 = this.readu8();
@@ -297,20 +251,10 @@ export class CPU {
                 return false;
             }
 
-            if (this._enableDebugging) {
-                this._debug.instruction(opcode, opcode2);
-            }
-
+            this._currentOpcodeTicks = _cbopcodes[opcode2][0];
             _cbopcodes[opcode2][1](opcode2, this);
 
-            this._cycles += _cbopcodes[opcode2][0];
-            this._display.tick(_cbopcodes[opcode2][0]);
-            this._audio.tick(_cbopcodes[opcode2][0]);
-            this._memory.tick(_cbopcodes[opcode2][0]);
-            this._tickTimer(_cbopcodes[opcode2][0]);
-            this._tickInput(_cbopcodes[opcode2][0]);
-
-            this.checkInterrupt();
+            this._tickInternal(this._currentOpcodeTicks);
             return true;
         }
 
@@ -319,21 +263,21 @@ export class CPU {
             return false;
         }
 
-        if (this._enableDebugging) {
-            this._debug.instruction(opcode);
-        }
-
+        this._currentOpcodeTicks = _opcodes[opcode][0];
         _opcodes[opcode][1](opcode, this);
 
-        this._cycles += _opcodes[opcode][0];
-        this._display.tick(_opcodes[opcode][0]);
-        this._audio.tick(_opcodes[opcode][0]);
-        this._memory.tick(_opcodes[opcode][0]);
-        this._tickTimer(_opcodes[opcode][0]);
-        this._tickInput(_opcodes[opcode][0]);
-
-        this.checkInterrupt();
+        this._tickInternal(this._currentOpcodeTicks);
         return true;
+    }
+
+    private _tickInternal(cycles: number): void {
+        this._cycles += cycles;
+        this._display.tick(cycles);
+        this._audio.tick(cycles);
+        this._memory.tick(cycles);
+        this._timer.tick(cycles);
+        this._tickInput(cycles);
+        this.checkInterrupt();
     }
 
     public readu8(): number {
@@ -481,36 +425,6 @@ export class CPU {
         this.P1 = current;
     }
 
-    private _tickTimer(cycles: number): void {
-        this._divCycles += cycles;
-
-        while (this._divCycles >= 256) {
-            this._divCycles -= 256;
-            this._specialRegisters[SpecialRegister.DIV] = (this._specialRegisters[SpecialRegister.DIV] + 1) & 0xFF;
-        }
-
-        if (!this._timerEnabled) {
-            return;
-        }
-
-        this._timerCycles += cycles;
-
-        while (this._timerCycles >= this._ticksPerClockIncrement) {
-            this._timerCycles -= this._ticksPerClockIncrement;
-
-            // console.log(`tick2: ${this._timerCycles}, ${this._ticksPerClockIncrement}, ${this._specialRegisters[SpecialRegister.TIMA]}, ${cycles}`);
-
-            if (this._specialRegisters[SpecialRegister.TIMA] === 0xFF) {
-                this._specialRegisters[SpecialRegister.TIMA] = this._specialRegisters[SpecialRegister.TMA];
-                this.requestInterrupt(Interrupt.Timer);
-
-                // this._halt = true;
-            } else {
-                this._specialRegisters[SpecialRegister.TIMA]++;
-            }
-        }
-    }
-
     private _fireInterrupt(interrupt: Interrupt): void {
         this.enableInterrupts = false;
 
@@ -524,10 +438,6 @@ export class CPU {
         } else {
             console.log(`Unknown opcode 0x${opcode.toString(16)}`);
         }
-    }
-
-    get enableDebugging() {
-        return this._enableDebugging;
     }
 
     get enableInterrupts() {
@@ -610,28 +520,12 @@ export class CPU {
         return this._display;
     }
 
-    get debug() {
-        return this._debug;
-    }
-
     get cycles() {
         return this._cycles;
     }
 
     get IF() {
         return this._specialRegisters[SpecialRegister.IF];
-    }
-
-    get TIMA() {
-        return this._specialRegisters[SpecialRegister.TIMA];
-    }
-
-    get TMA() {
-        return this._specialRegisters[SpecialRegister.TMA];
-    }
-
-    get DIV() {
-        return this._specialRegisters[SpecialRegister.DIV];
     }
 
     get P1() {
@@ -716,5 +610,29 @@ export class CPU {
 
     set PC(val: number) {
         this._registers16[1] = val;
+    }
+
+    get halt(): boolean {
+        return this._halt;
+    }
+
+    set halt(val: boolean) {
+        this._halt = val;
+    }
+
+    get opcode(): number {
+        return this._currentOpcode;
+    }
+
+    get opcodePC(): number {
+        return this._currentOpcodePC;
+    }
+
+    get opcodeTicks(): number {
+        return this._currentOpcodeTicks;
+    }
+
+    set opcodeTicks(val: number) {
+        this._currentOpcodeTicks = val;
     }
 }

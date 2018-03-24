@@ -42,7 +42,7 @@ export class Memory
         this._wram = Array(0x2000).fill(0xFF);
         this._vram = Array(0x2000).fill(0xFF);
         this._hram = Array(127).fill(0xFF);
-        this._oamram = Array(0x100).fill(0xFF);
+        this._oamram = Array(0xA0).fill(0xFF);
         this._ram = Array(0x8000).fill(0xFF);
 
         this.addRegister(0xFF50, () => 0, (x) => {
@@ -200,7 +200,7 @@ export class Memory
     public performOAMDMATransfer(position: number): void
     {
         for (let i = 0; i <= 0x9F; i++) {
-            this._oamram[i] = this._controller.read(position + i);
+            this._oamram[i] = this.read8(position + i);
         }
     }
 

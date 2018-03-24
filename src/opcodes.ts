@@ -469,6 +469,7 @@ export class Opcodes {
 
         if (check) {
             cpu.PC += relative;
+            cpu.opcodeTicks += 4;
         }
     }
 
@@ -739,10 +740,6 @@ export class Opcodes {
     public static AND_0xA0(opcode: number, cpu: CPU): void {
         const register = cpu.readByteRegisterType(opcode);
 
-        if (cpu.enableDebugging) {
-            cpu.debug.log(`AND ${cpu[register].toString(16)}`);
-        }
-
         cpu.clearFlags();
 
         cpu.A &= cpu[register];
@@ -857,8 +854,8 @@ export class Opcodes {
         }
 
         if (check) {
-            // cpu.debug.funcRet(cpu.PC - 1);
             cpu.PC = cpu.popStack();
+            cpu.opcodeTicks += 12;
         }
     }
 
@@ -904,6 +901,7 @@ export class Opcodes {
 
         if (check) {
             cpu.PC = addr;
+            cpu.opcodeTicks += 4;
         }
     }
 
@@ -943,9 +941,7 @@ export class Opcodes {
         if (check) {
             cpu.pushStack(cpu.PC);
             cpu.PC = addr;
-            // cpu.debug.func(addr);
-        } else {
-            // cpu.debug.func(addr, false);
+            cpu.opcodeTicks += 12;
         }
     }
 
@@ -966,7 +962,6 @@ export class Opcodes {
 
     @Opcode(0xC9, 16, "RET")
     public static RET_0xC9(opcode: number, cpu: CPU): void {
-        // cpu.debug.funcRet(cpu.PC - 1);
         cpu.PC = cpu.popStack();
     }
 
@@ -976,8 +971,6 @@ export class Opcodes {
 
         cpu.pushStack(cpu.PC);
         cpu.PC = addr;
-
-        // cpu.debug.func(addr);
     }
 
     @Opcode(0x88, 4, "ADC A,B")
@@ -1078,10 +1071,6 @@ export class Opcodes {
         const val = cpu.readu8();
 
         cpu.clearFlags();
-
-        if (cpu.enableDebugging) {
-            cpu.debug.log(`AND ${val.toString(16)}`);
-        }
 
         cpu.A &= val;
         toggleZeroFlag(cpu, cpu.A);

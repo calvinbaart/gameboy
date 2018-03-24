@@ -187,7 +187,70 @@ export class Display {
             return;
         }
 
-        // todo
+        const width = 8;
+        const height = (this.LCDC & (1 << 2)) ? 16 : 8;
+        const tileBase = 0x8000;
+
+        for (let i = 0; i < 40; i++) {
+            const addr = 0xFE00 + (i * 4);
+            const y = this._cpu.MMU.read8(addr + 0) - 16;
+            const x = this._cpu.MMU.read8(addr + 1) - 8;
+            let tile = this._cpu.MMU.read8(addr + 2);
+
+            if (height === 16) {
+                tile &= ~(0x01);
+            }
+
+            const flags = this._cpu.MMU.read8(addr + 3);
+
+            const flipX = flags & (1 << 5) ? true : false;
+            const flipY = flags & (1 << 6) ? true : false;
+
+            const palette = flags & (1 << 4) ? this._registers[DisplayRegister.OBP1] : this._registers[DisplayRegister.OBP0];
+
+            if (x < 0 || y < 0 || x >= 160 || y >= 144) {
+                continue;
+            }
+
+            if (this.LY < y || this.LY >= y + height) {
+                continue;
+            }
+
+            let spriteY = this.LY - y;
+
+            if (flipY) {
+                spriteY = height - spriteY;
+            }
+
+            for (let spriteX = 0; spriteX < width; spriteX++) {
+                const pixelX = x + spriteX;
+                const tileAddr = tileBase + tile * 16 + (spriteY * 2);
+
+                const byte1 = this._cpu.MMU.read8(tileAddr);
+                const byte2 = this._cpu.MMU.read8(tileAddr + 1);
+
+                let bit = 7 - spriteX;
+
+                if (flipX) {
+                    bit = 7 - (7 - spriteX);
+                }
+
+                const colorNum = (this._bitGet(byte2, bit) << 1) | (this._bitGet(byte1, bit));
+                const color = this._getColor(palette, colorNum);
+                const index = ((this.LY * 160) + pixelX) * 4;
+
+                if ((flags & (1 << 7)) !== 0) {
+                    if (this._framebuffer[index + 0] !== GameboyColorPalette[0]) {
+                        continue;
+                    }
+                }
+
+                this._framebuffer[index + 0] = color;
+                this._framebuffer[index + 1] = color;
+                this._framebuffer[index + 2] = color;
+                this._framebuffer[index + 3] = 255;
+            }
+        }
     }
 
     private _renderWindow(): void {
@@ -197,6 +260,15 @@ export class Display {
 
         const base = this._windowTilemap ? 0x9C00 : 0x9800;
         const tileBase = this._activeTileset ? 0x8000 : 0x9000;
+
+        // out of bounds
+        if ((this.WX - 7) >= 160) {
+            return;
+        }
+
+        if (this.WY >= 144) {
+            return;
+        }
 
         // todo
     }
@@ -273,9 +345,7 @@ export class Display {
     private _writeRegister(register: DisplayRegister, value: number): void {
         switch (register) {
             case DisplayRegister.DMA:
-                if (this.mode === DisplayMode.HBlank) {
-                    this._cpu.MMU.performOAMDMATransfer(value * 0x100);
-                }    
+                this._cpu.MMU.performOAMDMATransfer(value * 0x100);
                 break;
             
             // case DisplayRegister.BGP:
@@ -300,6 +370,22 @@ export class Display {
 
     public set LYC(val: number) {
         this._registers[DisplayRegister.LYC] = val;
+    }
+
+    public get WX() {
+        return this._registers[DisplayRegister.WX];
+    }
+
+    public set WX(val: number) {
+        this._registers[DisplayRegister.WX] = val;
+    }
+
+    public get WY() {
+        return this._registers[DisplayRegister.WY];
+    }
+
+    public set WY(val: number) {
+        this._registers[DisplayRegister.WY] = val;
     }
 
     public get SCX() {
