@@ -44,7 +44,7 @@ export class Display {
 
     constructor(cpu: CPU) {
         this._cpu = cpu;
-        this._registers = new Uint8Array(0x0B);
+        this._registers = new Uint8Array(0x0C);
         this._cycles = 0;
         this._cyclesExtra = 0;
         this._vblank = 0;
@@ -71,6 +71,7 @@ export class Display {
         this._context = tmp.getContext("2d");
         this._context.fillStyle = "#dddddd";
         this._context.fillRect(0, 0, 160, 144);
+        this._context.imageSmoothingEnabled = false;
         this._data = this._context.createImageData(160, 144);
         this._framebuffer = this._data.data;
 
@@ -86,6 +87,8 @@ export class Display {
         this.BGP = 0xFC;
         this.SCX = 0;
         this.SCY = 0;
+        this.WX = 0;
+        this.WY = 0;
         this.LY = 0x91;
 
         document.getElementById("emulator").appendChild(tmp);
@@ -95,6 +98,9 @@ export class Display {
         const control = this._readRegister(DisplayRegister.LCDC);
 
         if (!(control & (1 << 7))) {
+            this.LY = 0;
+            this.mode = 0;
+            this._cycles = 0;
             return;
         }
 
@@ -104,15 +110,17 @@ export class Display {
         this._cycles += delta;
         this._cyclesExtra += delta;
 
-        if (this.LY === this.LYC) {
-            this.STAT |= 0x04;
-        }
-
         switch (this.mode) {
             case DisplayMode.HBlank:
                 if (this._cycles >= 204) {
                     this._cycles -= 204;
                     this.LY++;
+
+                    if (this.LY === this.LYC) {
+                        this.STAT |= 1 << 2;
+                    } else {
+                        this.STAT &= ~(1 << 2);
+                    }
 
                     if (this.LY === 144) {
                         this._render();
@@ -121,15 +129,15 @@ export class Display {
                         this.mode = DisplayMode.VBlank;
                         this._cpu.requestInterrupt(Interrupt.VBlank);
 
-                        if ((this.LCDC & 0x20) !== 0) {
+                        if ((this.STAT & (1 << 4)) !== 0) {
                             this._cpu.requestInterrupt(Interrupt.LCDStat);
                         }
                     } else {
-                        if ((this.LCDC & 0x30) !== 0) {
+                        if ((this.STAT & (1 << 5)) !== 0) {
                             this._cpu.requestInterrupt(Interrupt.LCDStat);
                         }
 
-                        if ((this.LCDC & 0x40) !== 0 && this.LY === this.LYC) {
+                        if ((this.STAT & (1 << 6)) !== 0 && this.LY === this.LYC) {
                             this._cpu.requestInterrupt(Interrupt.LCDStat);
                         }
 
@@ -162,13 +170,13 @@ export class Display {
                 if (this._cycles >= 160 && !this._scanlineTransferred) {
                     this._renderScanline();
                     this._scanlineTransferred = true;
-                }    
+                }
 
                 if (this._cycles >= 172) {
                     this._cycles -= 172;
                     this.mode = DisplayMode.HBlank;
 
-                    if ((this.LCDC & 0x10) !== 0) {
+                    if ((this.STAT & (1 << 3)) !== 0) {
                         this._cpu.requestInterrupt(Interrupt.LCDStat);
                     }
                 }
@@ -208,10 +216,6 @@ export class Display {
 
             const palette = flags & (1 << 4) ? this._registers[DisplayRegister.OBP1] : this._registers[DisplayRegister.OBP0];
 
-            if (x < 0 || y < 0 || x >= 160 || y >= 144) {
-                continue;
-            }
-
             if (this.LY < y || this.LY >= y + height) {
                 continue;
             }
@@ -236,7 +240,12 @@ export class Display {
                 }
 
                 const colorNum = (this._bitGet(byte2, bit) << 1) | (this._bitGet(byte1, bit));
-                const color = this._getColor(palette, colorNum);
+                const color = this._getColor(palette, colorNum, true);
+
+                if (color === null) {
+                    continue;
+                }
+
                 const index = ((this.LY * 160) + pixelX) * 4;
 
                 if ((flags & (1 << 7)) !== 0) {
@@ -261,16 +270,60 @@ export class Display {
         const base = this._windowTilemap ? 0x9C00 : 0x9800;
         const tileBase = this._activeTileset ? 0x8000 : 0x9000;
 
-        // out of bounds
-        if ((this.WX - 7) >= 160) {
+        const wx = this.WX - 7;
+        const wy = this.WY;
+
+        if (wx > 159) {
             return;
         }
 
-        if (this.WY >= 144) {
+        if ((wy > 143) || (wy > this.LY)) {
             return;
         }
+        
+        const winY = this.LY - wy;
+        const tileY = Math.floor(winY / 8) % 32;
+        const tileYOffset = winY % 8;
 
-        // todo
+        let tx = -1;
+        let byte1 = 0;
+        let byte2 = 0;
+
+        for (let x = 0; x < 160; x++) {
+            if ((wx + x) < 0 || (wx + x) >= 160) {
+                continue;
+            }
+
+            const tileX = Math.floor(x / 8) % 32;
+
+            if (tx !== tileX) {
+                let tileNumber = this._cpu.MMU.read8(base + (tileY * 32) + tileX);
+
+                // Read tileValue as signed
+                if (!this._activeTileset) {
+                    let msb_mask = 1 << (8 - 1);
+                    tileNumber = (tileNumber ^ msb_mask) - msb_mask;
+                }
+
+                const tileAddr = tileBase + tileNumber * 0x10 + (tileYOffset * 2);
+
+                byte1 = this._cpu.MMU.read8(tileAddr);
+                byte2 = this._cpu.MMU.read8(tileAddr + 1);
+
+                tx = tileX;
+            }
+
+            const bit = 7 - (x % 8);
+
+            const colorNum = (this._bitGet(byte2, bit) << 1) | (this._bitGet(byte1, bit));
+            const color = this._getColor(this.BGP, colorNum, false);
+            const index = ((this.LY * 160) + wx + x) * 4;
+
+            this._framebuffer[index + 0] = color;
+            this._framebuffer[index + 1] = color;
+            this._framebuffer[index + 2] = color;
+            this._framebuffer[index + 3] = 255;
+        }
     }
 
     private _renderBackground(): void {
@@ -311,7 +364,7 @@ export class Display {
             const bit = 7 - ((this.SCX + x) % 8);
 
             const colorNum = (this._bitGet(byte2, bit) << 1) | (this._bitGet(byte1, bit));
-            const color = this._getColor(this.BGP, colorNum);
+            const color = this._getColor(this.BGP, colorNum, false);
             const index = ((this.LY * 160) + x) * 4;
 
             this._framebuffer[index + 0] = color;
@@ -325,10 +378,14 @@ export class Display {
         return input & (1 << bit) ? 1 : 0;
     }
 
-    private _getColor(palette: number, bit: number): number {
+    private _getColor(palette: number, bit: number, transparent: boolean): number | null {
         const hi = ((bit << 1) + 1);
         const lo = (bit << 1);
         const color = (this._bitGet(palette, hi) << 1) | (this._bitGet(palette, lo));
+
+        if (bit === 0 && transparent) {
+            return null;
+        }
 
         return GameboyColorPalette[color];
     }
@@ -338,7 +395,6 @@ export class Display {
     }
 
     private _readRegister(register: DisplayRegister): number {
-        // console.log(`${register.toString(16)} (R): ${this._registers[register].toString(16)}`);
         return this._registers[register];
     }
 
@@ -348,9 +404,22 @@ export class Display {
                 this._cpu.MMU.performOAMDMATransfer(value * 0x100);
                 break;
             
-            // case DisplayRegister.BGP:
-            //     console.log(`BGP: ${value.toString(16)}`);
-            //     break;
+            case DisplayRegister.LCDC:
+                if (!(value & (1 << 7))) {
+                    for (let x = 0; x < 160; x++) {
+                        for (let y = 0; y < 144; y++) {
+                            const index = ((y * 160) + x) * 4;
+
+                            this._framebuffer[index + 0] = GameboyColorPalette[0];
+                            this._framebuffer[index + 1] = GameboyColorPalette[0];
+                            this._framebuffer[index + 2] = GameboyColorPalette[0];
+                            this._framebuffer[index + 3] = 0xFF;
+                        }
+                    }
+
+                    this._render();
+                }    
+                break;
         }
 
         this._registers[register] = value;

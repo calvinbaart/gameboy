@@ -4,14 +4,12 @@ export class MBC3 implements MemoryController {
     private _mmu: Memory;
     private _romBankNumber: number;
     private _ramBankNumber: number;
-    private _ramBanking: boolean;
     private _ramEnabled: boolean;
 
     constructor(mmu: Memory) {
         this._mmu = mmu;
         this._romBankNumber = 1;
         this._ramBankNumber = 1;
-        this._ramBanking = false;
         this._ramEnabled = false;
     }
 
@@ -28,11 +26,7 @@ export class MBC3 implements MemoryController {
             case 0xA000:
             case 0xB000:
                 if (this._ramEnabled) {
-                    if (!this._ramBanking) {
-                        return this._mmu.readRam8(position - 0xA000);
-                    } else {
-                        return this._mmu.readRam8((position - 0xA000) + (this._ramBankNumber * 0x2000));
-                    }
+                    return this._mmu.readRam8((position - 0xA000) + (this._ramBankNumber * 0x2000));
                 }
                 return 0xFF;
 
@@ -45,40 +39,38 @@ export class MBC3 implements MemoryController {
         switch (position & 0xF000) {
             case 0x0000:
             case 0x1000:
+                if (this._ramEnabled && (value & 0x0F) !== 0x0A) {
+                    this._mmu.saveRam();
+                } else if (!this._ramEnabled && (value & 0x0F) === 0x0A) {
+                    this._mmu.loadRam();
+                }
+
                 this._ramEnabled = (value & 0x0F) === 0x0A;
                 return;
 
             case 0x2000:
             case 0x3000:
-                if (!this._ramBanking) {
-                    this._romBankNumber = (this._romBankNumber & 0xE0) | (value & 0x1F);
-                } else {
-                    this._romBankNumber = value & 0x1F;
-                }
+                this._romBankNumber = value;
                 return;
 
             case 0x4000:
             case 0x5000:
-                if (this._ramBanking) {
+                if (value <= 0x03) {
                     this._ramBankNumber = value & 0x03;
                 } else {
-                    this._romBankNumber = (this._romBankNumber & 0xCF) | (value << 4);
+                    console.log(`CLOCK REGISTER SELECT: ${value.toString(16)}`);
                 }
                 return;
 
             case 0x6000:
             case 0x7000:
-                this._ramBanking = value === 0x01;
+                console.log(`LATCH CLOCK DATA = ${value.toString(16)}`);
                 return;
 
             case 0xA000:
             case 0xB000:
                 if (this._ramEnabled) {
-                    if (!this._ramBanking) {
-                        this._mmu.writeRam8(position - 0xA000, value);
-                    } else {
-                        this._mmu.writeRam8((position - 0xA000) + (this._ramBankNumber * 0x2000), value);
-                    }
+                    this._mmu.writeRam8((position - 0xA000) + (this._ramBankNumber * 0x2000), value);
                 }
                 return;
 

@@ -11,36 +11,37 @@
                 padding: 0;
             }
 
+            #emulator, #instructions {
+                float: left;
+            }
+
             #emulator > * {
                 float: left;
                 overflow-y: auto;
 
-                height: 144px !important;
-                min-height: 144px !important;
-                max-height: 144px !important;
-            }
+                width: 320px !important;
+                min-width: 320px !important;
+                max-width: 320px !important;
 
-            #instructions {
-                width: 300px !important;
-                margin-right: 20px;
-            }
+                height: 288px !important;
+                min-height: 288px !important;
+                max-height: 288px !important;
 
-            .location {
-                float: left;
-                width: 20%;
-            }
-
-            .instruction {
-                float: left;
-                width: 80%
+                image-rendering: pixelated;
             }
         </style>
     </head>
     <body style="height: 100%;">
         <h2>Gameboy</h2>
         <div id="emulator">
-            <div id="memory"></div>
-            <div id="instructions"></div>
+        </div>
+        <div id="instructions">
+            <p>Instructions:</p>
+            <p>A = z</p>
+            <p>B = x</p>
+            <p>Start = c</p>
+            <p>Select = v</p>
+            <p>Up, Down, Left, Right = Arrow Keys</p>
         </div>
     </body>
 </html>

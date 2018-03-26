@@ -49,6 +49,12 @@ export class MBC1 implements MemoryController
         switch (position & 0xF000) {
             case 0x0000:
             case 0x1000:
+                if (this._ramEnabled && (value & 0x0F) !== 0x0A) {
+                    this._mmu.saveRam();
+                } else if (!this._ramEnabled && (value & 0x0F) === 0x0A) {
+                    this._mmu.loadRam();
+                }
+                
                 this._ramEnabled = (value & 0x0F) === 0x0A;
                 return;
             

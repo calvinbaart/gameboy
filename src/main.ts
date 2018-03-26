@@ -20,6 +20,7 @@ if (process.env.APP_ENV !== "browser") {
     };
 } else {
     global = window;
+    global.cpu = cpu;
 
     document.addEventListener("keyup", (e) => {
         switch (e.key) {
@@ -34,7 +35,7 @@ if (process.env.APP_ENV !== "browser") {
             case "c":
                 cpu.keyReleased(Key.Start);
                 break;
-
+                
             case "v":
                 cpu.keyReleased(Key.Select);
                 break;
@@ -96,7 +97,7 @@ if (process.env.APP_ENV !== "browser") {
 
 let stopEmulation = false;
 const loop = () => {
-    let cycles = Math.floor(4194304 / 60);
+    let cycles = Math.floor(4194304 / 60) * 3;
 
     if (stopEmulation) {
         cpu.Display.tick(cycles);
@@ -105,14 +106,13 @@ const loop = () => {
         return;
     }
 
-    while (cpu.cycles < cycles) {
+    const startCycles = cpu.cycles;
+    while ((cpu.cycles - startCycles) < cycles) {
         if (!cpu.step()) {
             stopEmulation = true;
             break;
         }
     }
-
-    cpu.cycles -= cycles;
 
     global.requestAnimationFrame(loop);
 };

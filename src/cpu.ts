@@ -2,7 +2,6 @@ import { Memory } from "./memory";
 import { Opcodes, OpcodesCB, _opcodes, _cbopcodes } from "./opcodes";
 import { Display } from "./display";
 import { Audio } from "./audio";
-import { Debug } from "./debug";
 import { Timer } from "./timer";
 
 export enum Key {
@@ -102,6 +101,9 @@ export class CPU {
     private _byteRegisterMap: { [key: number]: string };
 
     private _romType: RomType;
+    private _romName: string;
+    private _romHeaderChecksum: number;
+    private _romGlobalChecksum: number;
     private _halt: boolean;
     
     private _currentOpcode: number;
@@ -129,6 +131,7 @@ export class CPU {
         this._enableInterrupts = true;
         this._debugString = "";
         this._cycles = 0;
+        this._romName = "";
 
         this._memory.addRegister(0xFF00, this._registerRead.bind(this, SpecialRegister.P1),    this._registerWrite.bind(this, SpecialRegister.P1));
         this._memory.addRegister(0xFF01, this._registerRead.bind(this, SpecialRegister.SB),    this._registerWrite.bind(this, SpecialRegister.SB));
@@ -164,8 +167,20 @@ export class CPU {
         let val = this._specialRegisters[register];
 
         switch (register) {
+            case SpecialRegister.P1:
+                val |= 0xC0;
+                break;
+            
+            case SpecialRegister.SB:
+                val = 0xFF;
+                break;
+            
+            case SpecialRegister.SC:
+                val = 0xFE;
+                break;
+            
             case SpecialRegister.IF:
-                console.log(`IFR = ${val.toString(16)}`);
+                val |= 0xE0;
                 break;
         }
 
@@ -213,13 +228,25 @@ export class CPU {
         let buffer: Buffer = null;
 
         if (process.env.APP_ENV === "browser") {
-            buffer = require("../file-loader.js!../dist/roms/cpu_instrs.gb");
+            buffer = require("../file-loader.js!../dist/roms/pokemon.gb");
         } else {
             let fs = "fs";
-            buffer = require(fs).readFileSync("roms/mem_timing.gb");
+            buffer = require(fs).readFileSync("roms/interrupt_time.gb");
         }
 
         this._romType = buffer[0x147];
+        this._romName = "";
+
+        for (let i = 0x134; i <= 0x143; i++) {
+            if (buffer[i] === 0) {
+                break;
+            }
+
+            this._romName += String.fromCharCode(buffer[i]);
+        }
+        
+        this._romHeaderChecksum = buffer[0x14D];
+        this._romGlobalChecksum = (buffer[0x14E] << 8) | buffer[0x14F];
         this._memory.createController(this._romType);
 
         return this._memory.setRom(buffer);
@@ -525,7 +552,7 @@ export class CPU {
     }
 
     get IF() {
-        return this._specialRegisters[SpecialRegister.IF];
+        return this._registerRead(SpecialRegister.IF);
     }
 
     get P1() {
@@ -534,14 +561,6 @@ export class CPU {
 
     set P1(val: number) {
         this._registerWrite(SpecialRegister.P1, val);
-    }
-
-    get specialRegisters() {
-        return this._specialRegisters;
-    }
-
-    set cycles(val: number) {
-        this._cycles = val;
     }
 
     set A(val: number) {
@@ -634,5 +653,17 @@ export class CPU {
 
     set opcodeTicks(val: number) {
         this._currentOpcodeTicks = val;
+    }
+
+    get romName(): string {
+        return this._romName;
+    }
+
+    get romHeaderChecksum(): number {
+        return this._romHeaderChecksum;
+    }
+
+    get romGlobalChecksum(): number {
+        return this._romGlobalChecksum;
     }
 }

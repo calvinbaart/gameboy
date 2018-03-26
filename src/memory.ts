@@ -66,6 +66,7 @@ export class Memory
             case RomType.MBC3RAMBATTERY:
             case RomType.MBC3TIMERBATTERY:
             case RomType.MBC3TIMERRAMBATTERY:
+                console.log(`ROMTYPE = ${romType}`);
                 this._controller = new MBC3(this);
                 break;
             
@@ -143,6 +144,14 @@ export class Memory
             return;
         }
 
+        if (position >= 0xFF00 && position < 0xFF80) {
+            console.log("MISSED REGISTER WRITE: ", position.toString(16));
+        }
+
+        // if (position >= 0xC02A && position <= 0xC02D) {
+        //     console.log("ADDR: ", position, data);
+        // }
+
         switch (position & 0xF000) {
             case 0x8000:
             case 0x9000:
@@ -206,5 +215,27 @@ export class Memory
 
     public tick(cycles: number): void
     {
+    }
+
+    public saveRam(): void
+    {
+        let identifier = this._cpu.romName.trim() + this._cpu.romHeaderChecksum + this._cpu.romGlobalChecksum;
+        identifier = identifier.replace(/\s/g, "");
+
+        localStorage.setItem(identifier, JSON.stringify(this._ram));
+    }
+
+    public loadRam(): void
+    {
+        let identifier = this._cpu.romName.trim() + this._cpu.romHeaderChecksum + this._cpu.romGlobalChecksum;
+        identifier = identifier.replace(/\s/g, "");
+
+        const data = localStorage.getItem(identifier);
+
+        if (!data) {
+            return;
+        }
+        
+        this._ram = JSON.parse(data);
     }
 }
