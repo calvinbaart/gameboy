@@ -3,9 +3,9 @@ Gameboy emulator written in Typescript
 
 ## Status:
 - All opcodes are implemented and deemed correct by Blargg tests
+- Gameboy rendering is fully implemented (no GBC rendering yet)
 - MBC1 is fully implemented
 - MBC3 is partially implemented
-- Only-background tilesets are rendered, sprites are unimplemented.
 - Audio is unimplemented
 
 ## Screenshots:
