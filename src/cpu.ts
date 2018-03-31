@@ -113,6 +113,11 @@ export class CPU {
     // Input
     private _joypadState: number;
 
+    // Other
+    private _gbcModeRaw: number;
+    private _gbcMode: boolean;
+    public _inBootstrap: boolean;
+
     constructor() {
         new Opcodes();
         new OpcodesCB();
@@ -137,7 +142,18 @@ export class CPU {
         this._memory.addRegister(0xFF01, this._registerRead.bind(this, SpecialRegister.SB),    this._registerWrite.bind(this, SpecialRegister.SB));
         this._memory.addRegister(0xFF02, this._registerRead.bind(this, SpecialRegister.SC),    this._registerWrite.bind(this, SpecialRegister.SC));
         this._memory.addRegister(0xFF0F, this._registerRead.bind(this, SpecialRegister.IF),    this._registerWrite.bind(this, SpecialRegister.IF));
-        this._memory.addRegister(0xFFFF, this._registerRead.bind(this, SpecialRegister.IE),    this._registerWrite.bind(this, SpecialRegister.IE));
+        this._memory.addRegister(0xFFFF, this._registerRead.bind(this, SpecialRegister.IE), this._registerWrite.bind(this, SpecialRegister.IE));
+
+        // Undocumented register
+        this._memory.addRegister(0xFF4C, () => this._gbcModeRaw, (x) => {
+            this._gbcModeRaw = x;
+            this._gbcMode = (x & 0x80) == 0x80;
+
+            console.log(`GBCMODE = ${this._gbcMode ? "true" : "false"}`);
+        });
+
+        // this._memory.addRegister(0xFF74, () => 0xFE, (x) => { });
+        this._inBootstrap = true;
 
         this._registerMap = {
             0: "BC",
@@ -215,7 +231,7 @@ export class CPU {
         let buffer: Buffer = null;
 
         if (process.env.APP_ENV === "browser") {
-            buffer = require("../file-loader.js!../dist/bios/bios.bin");
+            buffer = require("../file-loader.js!../dist/bios/gbc_bios.bin");
         } else {
             let fs = "fs";
             buffer = require(fs).readFileSync("bios/bios.bin");
@@ -228,7 +244,7 @@ export class CPU {
         let buffer: Buffer = null;
 
         if (process.env.APP_ENV === "browser") {
-            buffer = require("../file-loader.js!../dist/roms/pokemon.gb");
+            buffer = require("../file-loader.js!../dist/roms/pokemongold.gbc");
         } else {
             let fs = "fs";
             buffer = require(fs).readFileSync("roms/interrupt_time.gb");
@@ -281,6 +297,7 @@ export class CPU {
             this._currentOpcodeTicks = _cbopcodes[opcode2][0];
             _cbopcodes[opcode2][1](opcode2, this);
 
+            // console.log(_cbopcodes[opcode2][2]);
             this._tickInternal(this._currentOpcodeTicks);
             return true;
         }
@@ -293,6 +310,7 @@ export class CPU {
         this._currentOpcodeTicks = _opcodes[opcode][0];
         _opcodes[opcode][1](opcode, this);
 
+        // console.log(_opcodes[opcode][2]);
         this._tickInternal(this._currentOpcodeTicks);
         return true;
     }
@@ -665,5 +683,9 @@ export class CPU {
 
     get romGlobalChecksum(): number {
         return this._romGlobalChecksum;
+    }
+
+    get gbcMode(): boolean {
+        return this._gbcMode;
     }
 }

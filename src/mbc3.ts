@@ -58,13 +58,13 @@ export class MBC3 implements MemoryController {
                 if (value <= 0x03) {
                     this._ramBankNumber = value & 0x03;
                 } else {
-                    console.log(`CLOCK REGISTER SELECT: ${value.toString(16)}`);
+                    // console.log(`CLOCK REGISTER SELECT: ${value.toString(16)}`);
                 }
                 return;
 
             case 0x6000:
             case 0x7000:
-                console.log(`LATCH CLOCK DATA = ${value.toString(16)}`);
+                // console.log(`LATCH CLOCK DATA = ${value.toString(16)}`);
                 return;
 
             case 0xA000:
