@@ -27,12 +27,15 @@ export class Memory
 
     private _vram: number[][];
     private _hram: number[];
-    private _wram: number[];
+    private _wram: number[][];
     private _oamram: number[];
     private _ram: number[];
     private _type: RomType;
     private _wramBank: number;
     private _vramBank: number;
+
+    public static save: (memory: Memory, identifier: string, data: string) => void;
+    public static load: (memory: Memory, identifier: string) => string;
 
     constructor(cpu: CPU)
     {
@@ -41,8 +44,20 @@ export class Memory
         this._bios = null;
         this._rom = null;
         this._biosEnabled = true;
-        this._wram = Array(0x8000).fill(0xFF);
-        this._vram = [Array(0x2000).fill(0xFF), Array(0x2000).fill(0xFF)];
+        this._wram = [
+            Array(0x1000).fill(0xFF),
+            Array(0x1000).fill(0xFF),
+            Array(0x1000).fill(0xFF),
+            Array(0x1000).fill(0xFF),
+            Array(0x1000).fill(0xFF),
+            Array(0x1000).fill(0xFF),
+            Array(0x1000).fill(0xFF),
+            Array(0x1000).fill(0xFF)
+        ];
+        this._vram = [
+            Array(0x2000).fill(0xFF),
+            Array(0x2000).fill(0xFF)
+        ];
         this._hram = Array(127).fill(0xFF);
         this._oamram = Array(0xA0).fill(0xFF);
         this._ram = Array(0x8000).fill(0xFF);
@@ -54,38 +69,21 @@ export class Memory
             this._cpu._inBootstrap = false;
         });
 
-        this.addRegister(0xFF70, () => 0x40 | this._wramBank & 0x07, (x) => {
+        this.addRegister(0xFF70, () => {
+            return 0x40 | (this._wramBank & 0x07);
+        }, (x) => {
             this._wramBank = x & 0x07;
+
+            if (this._wramBank === 0) {
+                this._wramBank = 1;
+            }
         });
 
-        this.addRegister(0xFF4F, () => this._vramBank & 0x01, (x) => {
+        this.addRegister(0xFF4F, () => {
+            return this._vramBank & 0x01;
+        }, (x) => {
             this._vramBank = x & 0x01;
         });
-
-        const tmp = new Uint8Array(9);
-        tmp[0] = 0xFE;
-        tmp[1] = 0x00;
-        tmp[2] = 0x00;
-        tmp[3] = 0x00;
-        tmp[4] = 0x8F;
-        tmp[5] = 0x00;
-        tmp[6] = 0x00;
-        tmp[7] = 0x00;
-        tmp[8] = 0x02;
-
-        // KEY1
-        // this.addRegister(0xFF4D, () => tmp[7], (x) => { tmp[7] = x; });
-
-        // Infrared Communications Port
-        // this.addRegister(0xFF56, () => 0x3C | tmp[8], (x) => { tmp[8] = x; });
-
-        // Undocumented registers
-        // this.addRegister(0xFF72, () => tmp[1], (x) => { console.log(`0xFF72: ${x.toString(16)}`); tmp[1] = x; });
-        // this.addRegister(0xFF73, () => tmp[2], (x) => { console.log(`0xFF73: ${x.toString(16)}`); tmp[2] = x; });
-        // this.addRegister(0xFF74, () => tmp[3], (x) => { console.log(`0xFF74: ${x.toString(16)}`); tmp[3] = x; });
-        // this.addRegister(0xFF75, () => 0x8F | tmp[4], (x) => { console.log(`0xFF75: ${x.toString(16)}`); tmp[4] = x; });
-        // this.addRegister(0xFF76, () => tmp[5], (x) => { console.log(`0xFF76: ${x.toString(16)}`); tmp[5] = x; });
-        // this.addRegister(0xFF77, () => tmp[6], (x) => { console.log(`0xFF77: ${x.toString(16)}`); tmp[6] = x; });
     }
 
     public createController(romType: RomType): void
@@ -104,7 +102,6 @@ export class Memory
             case RomType.MBC3RAMBATTERY:
             case RomType.MBC3TIMERBATTERY:
             case RomType.MBC3TIMERRAMBATTERY:
-                console.log(`ROMTYPE = ${romType}`);
                 this._controller = new MBC3(this);
                 break;
             
@@ -157,11 +154,18 @@ export class Memory
     }
 
     public readWorkRam(position: number, bank: number): number {
-        if (!this._biosEnabled && !this._cpu.gbcMode) {
-            return this._wram[position - 0xC000];
+        switch (position & 0xF000) {
+            default:
+            case 0xC000:
+                return this._wram[0][position - 0xC000];
+            
+            case 0xD000:
+                if (this._cpu.gbcMode) {
+                    return this._wram[bank][position - 0xD000];
+                } else {
+                    return this._wram[1][position - 0xD000];
+                }
         }
-
-        return this._wram[(position - 0xC000) + ((bank - 1) * 0x1000)];
     }
 
     public writeVideoRam(position: number, bank: number, data: number): void {
@@ -174,15 +178,19 @@ export class Memory
     }
 
     public writeWorkRam(position: number, bank: number, data: number): void {
-        if (!this._biosEnabled && !this._cpu.gbcMode) {
-            this._wram[position - 0xC000] = data & 0xFF;
-            return;
-        }
+        switch (position & 0xF000) {
+            default:
+            case 0xC000:
+                this._wram[0][position - 0xC000] = data & 0xFF;
+                break;
 
-        if (position < 0xD000) {
-            this._wram[position - 0xC000] = data & 0xFF;
-        } else {
-            this._wram[(position - 0xC000) + ((bank - 1) * 0x1000)] = data & 0xFF;
+            case 0xD000:
+                if (this._cpu.gbcMode) {
+                    this._wram[bank][position - 0xD000] = data & 0xFF;
+                } else {
+                    this._wram[1][position - 0xD000] = data & 0xFF;
+                }
+                break;
         }
     }
 
@@ -309,7 +317,7 @@ export class Memory
         let identifier = this._cpu.romName.trim() + this._cpu.romHeaderChecksum + this._cpu.romGlobalChecksum;
         identifier = identifier.replace(/\s/g, "");
 
-        localStorage.setItem(identifier, JSON.stringify(this._ram));
+        Memory.save(this, identifier, JSON.stringify(this._ram));
     }
 
     public loadRam(): void
@@ -317,7 +325,7 @@ export class Memory
         let identifier = this._cpu.romName.trim() + this._cpu.romHeaderChecksum + this._cpu.romGlobalChecksum;
         identifier = identifier.replace(/\s/g, "");
 
-        const data = localStorage.getItem(identifier);
+        const data = Memory.load(this, identifier);
 
         if (!data) {
             return;

@@ -6,12 +6,16 @@
             "type": "node",
             "request": "launch",
             "protocol": "inspector",
-            "preLaunchTask": "Compile",
             // Manually specify the args to pass
-            "runtimeArgs": [
-                "${workspaceRoot}/dist/main.js"
+            "cwd": "${workspaceFolder}/dist",
+            "args": [
+                "${workspaceRoot}/src/main_cli.ts"
             ],
-            "cwd": "${workspaceFolder}/dist"
+            "runtimeArgs": [
+                "-r",
+                "ts-node/register"
+            ],
+            "internalConsoleOptions": "openOnSessionStart"
         }
     ]
 }

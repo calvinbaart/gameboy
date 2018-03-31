@@ -82,6 +82,21 @@ export enum RomType {
     HUC1RAMBATTERY = 0xFF
 }
 
+export interface Instruction
+{
+    isCB: boolean;
+    opcode: number;
+    pc: number;
+    ticks: number;
+    cpu: CPU;
+
+    registers: Uint8Array;
+    registers16: Uint16Array;
+    opcodeName: string;
+
+    exec: (instruction: Instruction) => void;
+}
+
 export class CPU {
     private _display: Display;
     private _audio: Audio;
@@ -104,11 +119,6 @@ export class CPU {
     private _romName: string;
     private _romHeaderChecksum: number;
     private _romGlobalChecksum: number;
-    private _halt: boolean;
-    
-    private _currentOpcode: number;
-    private _currentOpcodePC: number;
-    private _currentOpcodeTicks: number;
 
     // Input
     private _joypadState: number;
@@ -117,6 +127,9 @@ export class CPU {
     private _gbcModeRaw: number;
     private _gbcMode: boolean;
     public _inBootstrap: boolean;
+    public _collectTrace: boolean;
+    
+    public static onInstruction: (cpu: CPU, instruction: Instruction) => void;
 
     constructor() {
         new Opcodes();
@@ -127,11 +140,11 @@ export class CPU {
         this._audio = new Audio(this);
         this._timer = new Timer(this);
         this._waitForInterrupt = false;
-        this._halt = false;
 
         this._specialRegisters = new Uint8Array(9);
         this._registers = new Uint8Array(8);
         this._registers16 = new Uint16Array(3);
+        this._collectTrace = false;
 
         this._enableInterrupts = true;
         this._debugString = "";
@@ -153,6 +166,8 @@ export class CPU {
         });
 
         // this._memory.addRegister(0xFF74, () => 0xFE, (x) => { });
+        this._gbcMode = false;
+        this._gbcModeRaw = 0x00;
         this._inBootstrap = true;
 
         this._registerMap = {
@@ -220,36 +235,14 @@ export class CPU {
                     }
                 }
                 break;
-            
-            case SpecialRegister.IF:
-                // console.log(`IFW = ${val.toString(16)}`);
-                break;
         }
     }
 
-    public loadBios(): boolean {
-        let buffer: Buffer = null;
-
-        if (process.env.APP_ENV === "browser") {
-            buffer = require("../file-loader.js!../dist/bios/gbc_bios.bin");
-        } else {
-            let fs = "fs";
-            buffer = require(fs).readFileSync("bios/bios.bin");
-        }
-
+    public setBios(buffer: Buffer): boolean {
         return this._memory.setBios(buffer);
     }
 
-    public loadRom(): boolean {
-        let buffer: Buffer = null;
-
-        if (process.env.APP_ENV === "browser") {
-            buffer = require("../file-loader.js!../dist/roms/pokemongold.gbc");
-        } else {
-            let fs = "fs";
-            buffer = require(fs).readFileSync("roms/interrupt_time.gb");
-        }
-
+    public setRom(buffer: Buffer): boolean {
         this._romType = buffer[0x147];
         this._romName = "";
 
@@ -268,11 +261,45 @@ export class CPU {
         return this._memory.setRom(buffer);
     }
 
-    public step(): boolean {
-        if (this._halt) {
-            return false;
+    public fetchAndDecode(): Instruction {
+        let instruction: Instruction = {
+            isCB: false,
+            pc: this.PC,
+            opcode: 0,
+            ticks: 0,
+            cpu: this,
+
+            registers: null,
+            registers16: null,
+            opcodeName: "",
+
+            exec: null
+        };
+
+        instruction.opcode = this.readu8();
+
+        if (instruction.opcode === 0xCB) {
+            instruction.isCB = true;
+            instruction.opcode = this.readu8();
+            instruction.ticks = _cbopcodes[instruction.opcode][0];
+            instruction.exec = _cbopcodes[instruction.opcode][1];
+            instruction.opcodeName = _cbopcodes[instruction.opcode][2];
+        } else {
+            instruction.isCB = false;
+            instruction.ticks = _opcodes[instruction.opcode][0];
+            instruction.exec = _opcodes[instruction.opcode][1];
+            instruction.opcodeName = _opcodes[instruction.opcode][2];
         }
 
+        if (this._collectTrace) {
+            instruction.registers = new Uint8Array(this._registers);
+            instruction.registers16 = new Uint16Array(this._registers16);
+        }
+
+        return instruction;
+    }
+
+    public step(): boolean {
         if (this._waitForInterrupt) {
             this._cycles += 4;
             this._tickInternal(4);
@@ -282,36 +309,14 @@ export class CPU {
             }
         }
 
-        this._currentOpcodePC = this.PC;
-        const opcode = this.readu8();
-        this._currentOpcode = opcode;
+        const instruction = this.fetchAndDecode();
+        instruction.exec(instruction);
 
-        if (opcode === 0xCB) {
-            const opcode2 = this.readu8();
-
-            if (_cbopcodes[opcode2] === undefined) {
-                this._log(opcode2, true);
-                return false;
-            }
-
-            this._currentOpcodeTicks = _cbopcodes[opcode2][0];
-            _cbopcodes[opcode2][1](opcode2, this);
-
-            // console.log(_cbopcodes[opcode2][2]);
-            this._tickInternal(this._currentOpcodeTicks);
-            return true;
+        if (CPU.onInstruction) {
+            CPU.onInstruction(this, instruction);
         }
 
-        if (_opcodes[opcode] === undefined) {
-            this._log(opcode);
-            return false;
-        }
-
-        this._currentOpcodeTicks = _opcodes[opcode][0];
-        _opcodes[opcode][1](opcode, this);
-
-        // console.log(_opcodes[opcode][2]);
-        this._tickInternal(this._currentOpcodeTicks);
+        this._tickInternal(instruction.ticks);
         return true;
     }
 
@@ -477,14 +482,6 @@ export class CPU {
         this.PC = 0x0040 + (interrupt * 8);
     }
 
-    private _log(opcode: number, isCB: boolean = false): void {
-        if (isCB) {
-            console.log(`Unknown cb opcode 0x${opcode.toString(16)}`);
-        } else {
-            console.log(`Unknown opcode 0x${opcode.toString(16)}`);
-        }
-    }
-
     get enableInterrupts() {
         return this._enableInterrupts;
     }
@@ -647,30 +644,6 @@ export class CPU {
 
     set PC(val: number) {
         this._registers16[1] = val;
-    }
-
-    get halt(): boolean {
-        return this._halt;
-    }
-
-    set halt(val: boolean) {
-        this._halt = val;
-    }
-
-    get opcode(): number {
-        return this._currentOpcode;
-    }
-
-    get opcodePC(): number {
-        return this._currentOpcodePC;
-    }
-
-    get opcodeTicks(): number {
-        return this._currentOpcodeTicks;
-    }
-
-    set opcodeTicks(val: number) {
-        this._currentOpcodeTicks = val;
     }
 
     get romName(): string {

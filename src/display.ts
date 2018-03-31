@@ -1,5 +1,4 @@
 import { CPU, SpecialRegister, Interrupt } from "./cpu";
-const document = require("./browser.js");
 
 const GameboyColorPalette = [
     0xEB, 0xC4, 0x60, 0x00
@@ -57,7 +56,7 @@ export class Display {
     private _backgroundTilemap: number;
     private _windowTilemap: number;
     private _activeTileset: number;
-    private _framebuffer: Uint8ClampedArray;
+    public _framebuffer: Uint8ClampedArray;
     private _priorityBuffer: boolean[];
     private _cycles: number;
     private _cyclesExtra: number;
@@ -67,6 +66,9 @@ export class Display {
     private _backgroundPalette: ColorPalette[];
     private _spritePalette: ColorPalette[];
     private _gbcMode: boolean;
+
+    public static setupWindow: (display: Display) => void;
+    public static render: (display: Display) => void;
 
     constructor(cpu: CPU) {
         this._cpu = cpu;
@@ -124,19 +126,7 @@ export class Display {
         this._cpu.MMU.addRegister(0xFF6A, this._readRegister.bind(this, DisplayRegister.OCPS), this._writeRegister.bind(this, DisplayRegister.OCPS));
         this._cpu.MMU.addRegister(0xFF6B, this._readRegister.bind(this, DisplayRegister.OCPD), this._writeRegister.bind(this, DisplayRegister.OCPD));
 
-        const tmp = document.createElement("canvas");
-        tmp.style.width = "160px";
-        tmp.style.height = "144px";
-        tmp.width = 160;
-        tmp.height = 144;
-        this._context = tmp.getContext("2d");
-        this._context.fillStyle = "#dddddd";
-        this._context.fillRect(0, 0, 160, 144);
-        this._context.imageSmoothingEnabled = false;
-        this._data = this._context.createImageData(160, 144);
-        this._framebuffer = this._data.data;
-
-        // this._framebuffer = new Uint8ClampedArray(160 * 144 * 4);
+        Display.setupWindow(this);
 
         for (let i = 0; i < (160 * 144 * 4); i += 4) {
             this._framebuffer[i + 0] = 235;
@@ -154,13 +144,15 @@ export class Display {
         this.WY = 0;
         this.LY = 0x91;
 
+        this._registers[DisplayRegister.BCPD] = 0;
+        this._registers[DisplayRegister.BCPS] = 0;
+        this._registers[DisplayRegister.OCPD] = 0;
+        this._registers[DisplayRegister.OCPS] = 0;
         this._registers[DisplayRegister.HDMA1] = 0;
         this._registers[DisplayRegister.HDMA2] = 0;
         this._registers[DisplayRegister.HDMA3] = 0;
         this._registers[DisplayRegister.HDMA4] = 0;
         this._registers[DisplayRegister.HDMA5] = 1 << 7;
-
-        document.getElementById("emulator").appendChild(tmp);
     }
 
     public tick(delta: number) {
@@ -253,33 +245,6 @@ export class Display {
         }
     }
 
-    private setColorPaletteIndex(data: number, background: boolean): void {
-        this._gbcMode = true;
-
-        const hl = (data & 0x1) != 0;
-        const index = (data >> 1) & 0x03;
-        const pal = (data >> 3) & 0x07;
-
-        const color = (background ? this._backgroundPalette[pal].color[index] : this._spritePalette[pal].color[index]);
-
-        let final_value = 0;
-
-        if (hl) {
-            const blue = (color.blue & 0x1f) << 2;
-            const half_green_hi = (color.green >> 3) & 0x03;
-
-            final_value = (blue | half_green_hi) & 0x7F;
-        }
-        else {
-            const half_green_low = (color.green & 0x07) << 5;
-            const red = color.red & 0x1F;
-
-            final_value = (red | half_green_low);
-        }
-
-        this._registers[background ? DisplayRegister.BCPD : DisplayRegister.OCPD] = final_value;
-    }
-
     private setColorPaletteData(data: number, background: boolean): void {
         this._gbcMode = true;
 
@@ -288,16 +253,6 @@ export class Display {
         const hl = (ps & 0x1) != 0;
         const index = (ps >> 1) & 0x03;
         const pal = (ps >> 3) & 0x07;
-
-        if (increment) {
-            let address = ps & 0x3F;
-            address++;
-            address &= 0x3F;
-            ps = (ps & 0x80) | address;
-
-            this._registers[background ? DisplayRegister.BCPS : DisplayRegister.OCPS] = ps;
-            this.setColorPaletteIndex(ps, background);
-        }
 
         if (hl) {
             const blue = (data >> 2) & 0x1F;
@@ -325,6 +280,12 @@ export class Display {
                 this._spritePalette[pal].color[index].green =
                     (this._spritePalette[pal].color[index].green & 0x18) | halfGreen;
             }
+        }
+
+        if (increment) {
+            ps = (ps & 0x80) | ((ps + 1) & 0x3F);
+
+            this._registers[background ? DisplayRegister.BCPS : DisplayRegister.OCPS] = ps;
         }
     }
 
@@ -538,6 +499,12 @@ export class Display {
                     tileFlipX = ((tileAttribute >> 5) & 0x01) === 1;
                     tileFlipY = ((tileAttribute >> 6) & 0x01) === 1;
                     tilePriority = ((tileAttribute >> 7) & 0x01) === 1;
+                } else {
+                    tileFlipX = false;
+                    tileFlipY = false;
+                    tilePriority = false;
+                    tilePalette = 0;
+                    tileBank = 0;
                 }
 
                 // Read tileValue as signed
@@ -554,7 +521,9 @@ export class Display {
                 tx = tileX;
             }
 
-            const bit = 7 - ((this.SCX + x) % 8);
+            const tmp_x = ((this.SCX + x) % 8);
+            const bit = tileFlipX ? 7 - (7 - tmp_x) : 7 - tmp_x;
+
             const colorNum = (this._bitGet(byte2, bit) << 1) | (this._bitGet(byte1, bit));
             const index = ((this.LY * 160) + x) * 4;
 
@@ -600,21 +569,21 @@ export class Display {
 
         if (background) {
             return {
-                red: Math.round((this._backgroundPalette[palette].color[bit].red / 0x1F) * GameboyColorPalette[0]),
-                green: Math.round((this._backgroundPalette[palette].color[bit].green / 0x1F) * GameboyColorPalette[0]),
-                blue: Math.round((this._backgroundPalette[palette].color[bit].blue / 0x1F) * GameboyColorPalette[0])
+                red: Math.round((this._backgroundPalette[palette].color[bit].red / 31) * GameboyColorPalette[0]),
+                green: Math.round((this._backgroundPalette[palette].color[bit].green / 31) * GameboyColorPalette[0]),
+                blue: Math.round((this._backgroundPalette[palette].color[bit].blue / 31) * GameboyColorPalette[0])
             };
         }
 
         return {
-            red: Math.round((this._spritePalette[palette].color[bit].red / 0x1F) * GameboyColorPalette[0]),
-            green: Math.round((this._spritePalette[palette].color[bit].green / 0x1F) * GameboyColorPalette[0]),
-            blue: Math.round((this._spritePalette[palette].color[bit].blue / 0x1F) * GameboyColorPalette[0])
+            red: Math.round((this._spritePalette[palette].color[bit].red / 31) * GameboyColorPalette[0]),
+            green: Math.round((this._spritePalette[palette].color[bit].green / 31) * GameboyColorPalette[0]),
+            blue: Math.round((this._spritePalette[palette].color[bit].blue / 31) * GameboyColorPalette[0])
         };
     }
 
     private _render(): void {
-        this._context.putImageData(this._data, 0, 0);
+        Display.render(this);
     }
 
     private _readRegister(register: DisplayRegister): number {
@@ -644,17 +613,17 @@ export class Display {
                 }    
                 break;
             
-            case DisplayRegister.BCPS:
-                this.setColorPaletteIndex(value, true);
-                break;
+            // case DisplayRegister.BCPS:
+            //     this.setColorPaletteIndex(value, true);
+            //     break;
 
             case DisplayRegister.BCPD:
                 this.setColorPaletteData(value, true);
                 break;
 
-            case DisplayRegister.OCPS:
-                this.setColorPaletteIndex(value, false);
-                break;
+            // case DisplayRegister.OCPS:
+            //     this.setColorPaletteIndex(value, false);
+            //     break;
 
             case DisplayRegister.OCPD:
                 this.setColorPaletteData(value, false);

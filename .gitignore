@@ -1,6 +1,7 @@
 /dist/*.js
 /dist/bios/*.bin
 /dist/roms/*.gb
+/dist/roms/*.gbc
 /node_modules
 /docs
 dist/scripts/main.js
