@@ -128,6 +128,10 @@ const loop = () => {
 
     let cycles = Math.floor(((4194304 * 2) / 1000.0) * delta);
 
+    if (cycles >= (Math.floor(4194304 / 60) * 3)) {
+        cycles = Math.floor(4194304 / 60) * 3;
+    }
+    
     if (stopEmulation) {
         cpu.Display.tick(cycles);
         requestAnimationFrame(loop);
