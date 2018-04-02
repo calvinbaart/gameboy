@@ -314,18 +314,12 @@ export class Memory
 
     public saveRam(): void
     {
-        let identifier = this._cpu.romName.trim() + this._cpu.romHeaderChecksum + this._cpu.romGlobalChecksum;
-        identifier = identifier.replace(/\s/g, "");
-
-        Memory.save(this, identifier, JSON.stringify(this._ram));
+        Memory.save(this, this._cpu.saveIdentifier, JSON.stringify(this._ram));
     }
 
     public loadRam(): void
     {
-        let identifier = this._cpu.romName.trim() + this._cpu.romHeaderChecksum + this._cpu.romGlobalChecksum;
-        identifier = identifier.replace(/\s/g, "");
-
-        const data = Memory.load(this, identifier);
+        const data = Memory.load(this, this._cpu.saveIdentifier);
 
         if (!data) {
             return;

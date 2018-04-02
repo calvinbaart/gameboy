@@ -661,4 +661,11 @@ export class CPU {
     get gbcMode(): boolean {
         return this._gbcMode;
     }
+
+    get saveIdentifier(): string {
+        let identifier = this.romName.trim() + this.romHeaderChecksum + this.romGlobalChecksum;
+        identifier = identifier.replace(/\s/g, "");
+
+        return identifier;
+    }
 }

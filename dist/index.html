@@ -1,47 +1,116 @@
 <!DOCTYPE html>
-<html style="width: 100%;height: 100%;">
+<html lang="en">
     <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm"
+            crossorigin="anonymous">
         <script type="text/javascript" src="scripts/main.js" defer></script>
-        
+
         <style>
-            *, *:before, *:after {
-                position: relative;
-                margin: 0;
-                padding: 0;
-            }
+        canvas {
+            width: 100%;
+            height: auto;
 
-            #emulator, #instructions {
-                float: left;
-            }
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+        }
 
-            #emulator > * {
-                float: left;
-                overflow-y: auto;
+        body {
+            overflow: hidden;
+        }
 
-                width: 320px !important;
-                min-width: 320px !important;
-                max-width: 320px !important;
-
-                height: 288px !important;
-                min-height: 288px !important;
-                max-height: 288px !important;
-
-                image-rendering: pixelated;
-            }
+        html, body, #emulator-container, #emulator {
+            height: 100%;
+        }
         </style>
     </head>
-    <body style="height: 100%;">
-        <h2>Gameboy</h2>
-        <div id="emulator">
+
+    <body>
+        <div class="mt-0 ml-0 mr-0 mb-2">
+            <nav class="navbar navbar-expand-sm navbar-dark bg-secondary justify-content-between">
+                <a class="navbar-brand" href="#">Gameboy</a>
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent"
+                    aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                    <ul class="navbar-nav mr-auto">
+                        <li class="nav-item">
+                            <a class="btn btn-secondary" href="#" id="load">Load</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="btn btn-secondary" href="#" data-toggle="modal" data-target="#helpModal">Help</a>
+                        </li>
+                        <li class="nav-item" id="debug">
+                            <a class="btn btn-secondary disabled" href="#">Debug</a>
+                        </li>
+                    </ul>
+
+                    <form class="form-inline my-2 my-lg-0">
+                        <button class="nav-link btn btn-secondary" data-toggle="modal" data-target="#saveManagerModal">Save Manager</button>
+                    </form>
+                </div>
+            </nav>
         </div>
-        <div id="instructions">
-            <p>Instructions:</p>
-            <p>A = z</p>
-            <p>B = x</p>
-            <p>Start = c</p>
-            <p>Select = v</p>
-            <p>Up, Down, Left, Right = Arrow Keys</p>
+
+        <div class="container-fluid" id="emulator-container">
+            <div id="emulator" class="d-flex justify-content-center"></div>
         </div>
+
+        <div class="modal fade" id="helpModal" tabindex="-1" role="dialog" aria-labelledby="helpModalLabel" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="helpModalLabel">Help</h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <p>A = z</p>
+                        <p>B = x</p>
+                        <p>Start = c</p>
+                        <p>Select = v</p>
+                        <p>DPAD = arrow keys</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="saveManagerModal" tabindex="-1" role="dialog" aria-labelledby="saveManagerModalLabel" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="saveManagerModalLabel">Save Manager</h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    
+                    <div class="modal-body" id="saveManagerBody"></div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-success" id="importSave">Import</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <input type="file" style="display: none" id="loadFile" accept=".gb, .gbc">
+        <input type="file" style="display: none" id="loadSave" accept=".sav">
+
+        <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN"
+            crossorigin="anonymous"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q"
+            crossorigin="anonymous"></script>
+        <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
+            crossorigin="anonymous"></script>
     </body>
 </html>
