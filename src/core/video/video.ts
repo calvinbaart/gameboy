@@ -1,57 +1,16 @@
-import { CPU, SpecialRegister, Interrupt } from "./cpu";
+import { CPU } from "../cpu/cpu";
+import { ColorPalette, Color } from "./color";
+import { VideoRegister } from "./videoregister";
+import { VideoMode } from "./videomode";
+import { Interrupt } from "../cpu/interrupt";
 
 const GameboyColorPalette = [
     0xEB, 0xC4, 0x60, 0x00
 ];
 
-enum DisplayRegister {
-    LCDC,
-    STAT,
-    SCY,
-    SCX,
-    LY,
-    LYC,
-    DMA,
-    BGP,
-    OBP0,
-    OBP1,
-    WY,
-    WX,
-
-    //GBC
-    BCPS,
-    BCPD,
-    OCPS,
-    OCPD,
-    HDMA1,
-    HDMA2,
-    HDMA3,
-    HDMA4,
-    HDMA5
-}
-
-enum DisplayMode {
-    HBlank,
-    VBlank,
-    ReadingOAM,
-    ReadingOAMVRAM
-}
-
-interface Color {
-    red: number;
-    green: number;
-    blue: number;
-}
-
-interface ColorPalette {
-    color: Color[];
-}
-
-export class Display {
+export class Video {
     private _cpu: CPU;
     private _registers: Uint8Array;
-    private _context;
-    private _data;
 
     private _backgroundTilemap: number;
     private _windowTilemap: number;
@@ -73,18 +32,27 @@ export class Display {
     private _hdmaMode: number;
     private _hdmaStatus: number;
 
-    public static setupWindow: (display: Display) => void;
-    public static render: (display: Display) => void;
+    public static setupWindow: (display: Video) => void;
+    public static render: (display: Video) => void;
 
     constructor(cpu: CPU) {
         this._cpu = cpu;
-        this._registers = new Uint8Array(DisplayRegister.HDMA5 + 1);
+        this._registers = new Uint8Array(VideoRegister.HDMA5 + 1);
         this._cycles = 0;
         this._cyclesExtra = 0;
         this._vblank = 0;
         this._scanlineTransferred = false;
         this._gbcMode = false;
 
+        this._backgroundTilemap = 0;
+        this._windowTilemap = 0;
+        this._activeTileset = 0;
+        this._hdmaSource = 0;
+        this._hdmaTarget = 0;
+        this._hdmaMode = 0;
+        this._hdmaStatus = 0;
+        this._framebuffer = new Uint8ClampedArray(160 * 144 * 4);
+        
         this._backgroundPalette = [];
         this._spritePalette = [];
         this._framebufferNumbers = new Uint8ClampedArray(160 * 144);
@@ -109,31 +77,31 @@ export class Display {
             });
         }
 
-        this._cpu.MMU.addRegister(0xFF40, this._readRegister.bind(this, DisplayRegister.LCDC), this._writeRegister.bind(this, DisplayRegister.LCDC));
-        this._cpu.MMU.addRegister(0xFF41, this._readRegister.bind(this, DisplayRegister.STAT), this._writeRegister.bind(this, DisplayRegister.STAT));
-        this._cpu.MMU.addRegister(0xFF42, this._readRegister.bind(this, DisplayRegister.SCY), this._writeRegister.bind(this, DisplayRegister.SCY));
-        this._cpu.MMU.addRegister(0xFF43, this._readRegister.bind(this, DisplayRegister.SCX), this._writeRegister.bind(this, DisplayRegister.SCX));
-        this._cpu.MMU.addRegister(0xFF44, this._readRegister.bind(this, DisplayRegister.LY), this._writeRegister.bind(this, DisplayRegister.LY));
-        this._cpu.MMU.addRegister(0xFF45, this._readRegister.bind(this, DisplayRegister.LYC), this._writeRegister.bind(this, DisplayRegister.LYC));
-        this._cpu.MMU.addRegister(0xFF46, this._readRegister.bind(this, DisplayRegister.DMA), this._writeRegister.bind(this, DisplayRegister.DMA));
-        this._cpu.MMU.addRegister(0xFF47, this._readRegister.bind(this, DisplayRegister.BGP), this._writeRegister.bind(this, DisplayRegister.BGP));
-        this._cpu.MMU.addRegister(0xFF48, this._readRegister.bind(this, DisplayRegister.OBP0), this._writeRegister.bind(this, DisplayRegister.OBP0));
-        this._cpu.MMU.addRegister(0xFF49, this._readRegister.bind(this, DisplayRegister.OBP1), this._writeRegister.bind(this, DisplayRegister.OBP1));
-        this._cpu.MMU.addRegister(0xFF4A, this._readRegister.bind(this, DisplayRegister.WY), this._writeRegister.bind(this, DisplayRegister.WY));
-        this._cpu.MMU.addRegister(0xFF4B, this._readRegister.bind(this, DisplayRegister.WX), this._writeRegister.bind(this, DisplayRegister.WX));
+        this._cpu.MMU.addRegister(0xFF40, this._readRegister.bind(this, VideoRegister.LCDC), this._writeRegister.bind(this, VideoRegister.LCDC));
+        this._cpu.MMU.addRegister(0xFF41, this._readRegister.bind(this, VideoRegister.STAT), this._writeRegister.bind(this, VideoRegister.STAT));
+        this._cpu.MMU.addRegister(0xFF42, this._readRegister.bind(this, VideoRegister.SCY), this._writeRegister.bind(this, VideoRegister.SCY));
+        this._cpu.MMU.addRegister(0xFF43, this._readRegister.bind(this, VideoRegister.SCX), this._writeRegister.bind(this, VideoRegister.SCX));
+        this._cpu.MMU.addRegister(0xFF44, this._readRegister.bind(this, VideoRegister.LY), this._writeRegister.bind(this, VideoRegister.LY));
+        this._cpu.MMU.addRegister(0xFF45, this._readRegister.bind(this, VideoRegister.LYC), this._writeRegister.bind(this, VideoRegister.LYC));
+        this._cpu.MMU.addRegister(0xFF46, this._readRegister.bind(this, VideoRegister.DMA), this._writeRegister.bind(this, VideoRegister.DMA));
+        this._cpu.MMU.addRegister(0xFF47, this._readRegister.bind(this, VideoRegister.BGP), this._writeRegister.bind(this, VideoRegister.BGP));
+        this._cpu.MMU.addRegister(0xFF48, this._readRegister.bind(this, VideoRegister.OBP0), this._writeRegister.bind(this, VideoRegister.OBP0));
+        this._cpu.MMU.addRegister(0xFF49, this._readRegister.bind(this, VideoRegister.OBP1), this._writeRegister.bind(this, VideoRegister.OBP1));
+        this._cpu.MMU.addRegister(0xFF4A, this._readRegister.bind(this, VideoRegister.WY), this._writeRegister.bind(this, VideoRegister.WY));
+        this._cpu.MMU.addRegister(0xFF4B, this._readRegister.bind(this, VideoRegister.WX), this._writeRegister.bind(this, VideoRegister.WX));
 
         //GBC
-        this._cpu.MMU.addRegister(0xFF51, this._readRegister.bind(this, DisplayRegister.HDMA1), this._writeRegister.bind(this, DisplayRegister.HDMA1));
-        this._cpu.MMU.addRegister(0xFF52, this._readRegister.bind(this, DisplayRegister.HDMA2), this._writeRegister.bind(this, DisplayRegister.HDMA2));
-        this._cpu.MMU.addRegister(0xFF53, this._readRegister.bind(this, DisplayRegister.HDMA3), this._writeRegister.bind(this, DisplayRegister.HDMA3));
-        this._cpu.MMU.addRegister(0xFF54, this._readRegister.bind(this, DisplayRegister.HDMA4), this._writeRegister.bind(this, DisplayRegister.HDMA4));
-        this._cpu.MMU.addRegister(0xFF55, this._readRegister.bind(this, DisplayRegister.HDMA5), this._writeRegister.bind(this, DisplayRegister.HDMA5));
-        this._cpu.MMU.addRegister(0xFF68, this._readRegister.bind(this, DisplayRegister.BCPS), this._writeRegister.bind(this, DisplayRegister.BCPS));
-        this._cpu.MMU.addRegister(0xFF69, this._readRegister.bind(this, DisplayRegister.BCPD), this._writeRegister.bind(this, DisplayRegister.BCPD));
-        this._cpu.MMU.addRegister(0xFF6A, this._readRegister.bind(this, DisplayRegister.OCPS), this._writeRegister.bind(this, DisplayRegister.OCPS));
-        this._cpu.MMU.addRegister(0xFF6B, this._readRegister.bind(this, DisplayRegister.OCPD), this._writeRegister.bind(this, DisplayRegister.OCPD));
+        this._cpu.MMU.addRegister(0xFF51, this._readRegister.bind(this, VideoRegister.HDMA1), this._writeRegister.bind(this, VideoRegister.HDMA1));
+        this._cpu.MMU.addRegister(0xFF52, this._readRegister.bind(this, VideoRegister.HDMA2), this._writeRegister.bind(this, VideoRegister.HDMA2));
+        this._cpu.MMU.addRegister(0xFF53, this._readRegister.bind(this, VideoRegister.HDMA3), this._writeRegister.bind(this, VideoRegister.HDMA3));
+        this._cpu.MMU.addRegister(0xFF54, this._readRegister.bind(this, VideoRegister.HDMA4), this._writeRegister.bind(this, VideoRegister.HDMA4));
+        this._cpu.MMU.addRegister(0xFF55, this._readRegister.bind(this, VideoRegister.HDMA5), this._writeRegister.bind(this, VideoRegister.HDMA5));
+        this._cpu.MMU.addRegister(0xFF68, this._readRegister.bind(this, VideoRegister.BCPS), this._writeRegister.bind(this, VideoRegister.BCPS));
+        this._cpu.MMU.addRegister(0xFF69, this._readRegister.bind(this, VideoRegister.BCPD), this._writeRegister.bind(this, VideoRegister.BCPD));
+        this._cpu.MMU.addRegister(0xFF6A, this._readRegister.bind(this, VideoRegister.OCPS), this._writeRegister.bind(this, VideoRegister.OCPS));
+        this._cpu.MMU.addRegister(0xFF6B, this._readRegister.bind(this, VideoRegister.OCPD), this._writeRegister.bind(this, VideoRegister.OCPD));
 
-        Display.setupWindow(this);
+        Video.setupWindow(this);
 
         for (let i = 0; i < (160 * 144 * 4); i += 4) {
             this._framebuffer[i + 0] = 235;
@@ -151,15 +119,15 @@ export class Display {
         this.WY = 0;
         this.LY = 0x91;
 
-        this._registers[DisplayRegister.BCPD] = 0;
-        this._registers[DisplayRegister.BCPS] = 0;
-        this._registers[DisplayRegister.OCPD] = 0;
-        this._registers[DisplayRegister.OCPS] = 0;
-        this._registers[DisplayRegister.HDMA1] = 0;
-        this._registers[DisplayRegister.HDMA2] = 0;
-        this._registers[DisplayRegister.HDMA3] = 0;
-        this._registers[DisplayRegister.HDMA4] = 0;
-        this._registers[DisplayRegister.HDMA5] = 1 << 7;
+        this._registers[VideoRegister.BCPD] = 0;
+        this._registers[VideoRegister.BCPS] = 0;
+        this._registers[VideoRegister.OCPD] = 0;
+        this._registers[VideoRegister.OCPS] = 0;
+        this._registers[VideoRegister.HDMA1] = 0;
+        this._registers[VideoRegister.HDMA2] = 0;
+        this._registers[VideoRegister.HDMA3] = 0;
+        this._registers[VideoRegister.HDMA4] = 0;
+        this._registers[VideoRegister.HDMA5] = 1 << 7;
     }
 
     public performHDMA() {
@@ -185,14 +153,14 @@ export class Display {
             this._hdmaSource = 0xA000;
         }
 
-        this._registers[DisplayRegister.HDMA1] = this._hdmaSource >> 8;
-        this._registers[DisplayRegister.HDMA2] = this._hdmaSource & 0xF0;
-        this._registers[DisplayRegister.HDMA3] = this._hdmaTarget >> 8;
-        this._registers[DisplayRegister.HDMA4] = this._hdmaTarget & 0xF0;
+        this._registers[VideoRegister.HDMA1] = this._hdmaSource >> 8;
+        this._registers[VideoRegister.HDMA2] = this._hdmaSource & 0xF0;
+        this._registers[VideoRegister.HDMA3] = this._hdmaTarget >> 8;
+        this._registers[VideoRegister.HDMA4] = this._hdmaTarget & 0xF0;
     }
 
     public tick(delta: number) {
-        const control = this._readRegister(DisplayRegister.LCDC);
+        const control = this._readRegister(VideoRegister.LCDC);
 
         if (!(control & (1 << 7))) {
             this.LY = 0;
@@ -208,7 +176,7 @@ export class Display {
         this._cyclesExtra += delta;
 
         switch (this.mode) {
-            case DisplayMode.HBlank:
+            case VideoMode.HBlank:
                 if (this._cycles >= 204) {
                     if (this.hdmaInProgress) {
                         this.performHDMA();
@@ -227,7 +195,7 @@ export class Display {
                         this._render();
                         this._vblank = 0;
 
-                        this.mode = DisplayMode.VBlank;
+                        this.mode = VideoMode.VBlank;
                         this._cpu.requestInterrupt(Interrupt.VBlank);
 
                         if ((this.STAT & (1 << 4)) !== 0) {
@@ -242,12 +210,12 @@ export class Display {
                             this._cpu.requestInterrupt(Interrupt.LCDStat);
                         }
 
-                        this.mode = DisplayMode.ReadingOAM;
+                        this.mode = VideoMode.ReadingOAM;
                     }
                 }
                 break;
 
-            case DisplayMode.VBlank:
+            case VideoMode.VBlank:
                 while (this._cyclesExtra > 456) {
                     this._cyclesExtra -= 456;
                     this._vblank++;
@@ -255,19 +223,19 @@ export class Display {
 
                 if (this._cycles >= 4560) {
                     this._cycles -= 4560;
-                    this.mode = DisplayMode.ReadingOAM;
+                    this.mode = VideoMode.ReadingOAM;
                 }
                 break;
 
-            case DisplayMode.ReadingOAM:
+            case VideoMode.ReadingOAM:
                 if (this._cycles >= 80) {
                     this._cycles -= 80;
                     this._scanlineTransferred = false;
-                    this.mode = DisplayMode.ReadingOAMVRAM;
+                    this.mode = VideoMode.ReadingOAMVRAM;
                 }
                 break;
 
-            case DisplayMode.ReadingOAMVRAM:
+            case VideoMode.ReadingOAMVRAM:
                 if (this._cycles >= 160 && !this._scanlineTransferred) {
                     this._renderScanline();
                     this._scanlineTransferred = true;
@@ -275,7 +243,7 @@ export class Display {
 
                 if (this._cycles >= 172) {
                     this._cycles -= 172;
-                    this.mode = DisplayMode.HBlank;
+                    this.mode = VideoMode.HBlank;
 
                     if ((this.STAT & (1 << 3)) !== 0) {
                         this._cpu.requestInterrupt(Interrupt.LCDStat);
@@ -288,7 +256,7 @@ export class Display {
     private setColorPaletteData(data: number, background: boolean): void {
         this._gbcMode = true;
 
-        let ps = this._registers[background ? DisplayRegister.BCPS : DisplayRegister.OCPS];
+        let ps = this._registers[background ? VideoRegister.BCPS : VideoRegister.OCPS];
         const increment = (ps & 0x80) ? true : false;
         const hl = (ps & 0x1) != 0;
         const index = (ps >> 1) & 0x03;
@@ -325,7 +293,7 @@ export class Display {
         if (increment) {
             ps = (ps & 0x80) | ((ps + 1) & 0x3F);
 
-            this._registers[background ? DisplayRegister.BCPS : DisplayRegister.OCPS] = ps;
+            this._registers[background ? VideoRegister.BCPS : VideoRegister.OCPS] = ps;
         }
     }
 
@@ -361,7 +329,7 @@ export class Display {
             const flipY = flags & (1 << 6) ? true : false;
 
             const colorPalette = flags & 0x07;
-            const palette = flags & (1 << 4) ? this._registers[DisplayRegister.OBP1] : this._registers[DisplayRegister.OBP0];
+            const palette = flags & (1 << 4) ? this._registers[VideoRegister.OBP1] : this._registers[VideoRegister.OBP0];
 
             if (this.LY < y || this.LY >= y + height) {
                 continue;
@@ -392,7 +360,7 @@ export class Display {
 
                 const colorNum = (this._bitGet(byte2, bit) << 1) | (this._bitGet(byte1, bit));
 
-                let color: Color = null;
+                let color: Color | null = null;
                 if (!this.gbcMode) {
                     color = this._getColor(palette, colorNum, true);
                 } else {
@@ -493,12 +461,12 @@ export class Display {
             const baseIndex = (this.LY * 160) + wx + x;
             const index = baseIndex * 4;
 
-            let color: Color = null;
+            let color: Color;
             if (!this.gbcMode) {
-                color = this._getColor(this.BGP, colorNum, false);
+                color = this._getColor(this.BGP, colorNum, false) as Color;
             } else {
                 this._priorityBuffer[(this.LY * 160) + wx + x] = tilePriority;
-                color = this._getColorGBC(tilePalette, colorNum, true);
+                color = this._getColorGBC(tilePalette, colorNum, true) as Color;
             }
 
             this._framebuffer[index + 0] = color.red;
@@ -574,12 +542,12 @@ export class Display {
             const baseIndex = (this.LY * 160) + x;
             const index = baseIndex * 4;
 
-            let color: Color = null;
+            let color: Color;
             if (!this.gbcMode) {
-                color = this._getColor(this.BGP, colorNum, false);
+                color = this._getColor(this.BGP, colorNum, false) as Color;
             } else {
                 this._priorityBuffer[(this.LY * 160) + x] = tilePriority;
-                color = this._getColorGBC(tilePalette, colorNum, true);
+                color = this._getColorGBC(tilePalette, colorNum, true) as Color;
             }
 
             this._framebuffer[index + 0] = color.red;
@@ -632,20 +600,20 @@ export class Display {
     }
 
     private _render(): void {
-        Display.render(this);
+        Video.render(this);
     }
 
-    private _readRegister(register: DisplayRegister): number {
+    private _readRegister(register: VideoRegister): number {
         return this._registers[register];
     }
 
-    private _writeRegister(register: DisplayRegister, value: number): void {
+    private _writeRegister(register: VideoRegister, value: number): void {
         switch (register) {
-            case DisplayRegister.DMA:
+            case VideoRegister.DMA:
                 this._cpu.MMU.performOAMDMATransfer(value * 0x100);
                 break;
             
-            case DisplayRegister.LCDC:
+            case VideoRegister.LCDC:
                 if (!(value & (1 << 7))) {
                     for (let x = 0; x < 160; x++) {
                         for (let y = 0; y < 144; y++) {
@@ -662,14 +630,15 @@ export class Display {
                 }    
                 break;
 
-            case DisplayRegister.BCPD:
+            case VideoRegister.BCPD:
                 this.setColorPaletteData(value, true);
                 break;
 
-            case DisplayRegister.OCPD:
+            case VideoRegister.OCPD:
                 this.setColorPaletteData(value, false);
                 break;
-            case DisplayRegister.HDMA5:
+            
+            case VideoRegister.HDMA5:
                 this._registers[register] = value;
 
                 if (this.hdmaInProgress) {
@@ -677,8 +646,8 @@ export class Display {
                         this.hdmaInProgress = false;
                     }
                 } else {
-                    this._hdmaSource = (this._registers[DisplayRegister.HDMA1] << 8) | (this._registers[DisplayRegister.HDMA2] & 0xF0);
-                    this._hdmaTarget = ((this._registers[DisplayRegister.HDMA3] & 0x1F) << 8) | (this._registers[DisplayRegister.HDMA4] & 0xF0);
+                    this._hdmaSource = (this._registers[VideoRegister.HDMA1] << 8) | (this._registers[VideoRegister.HDMA2] & 0xF0);
+                    this._hdmaTarget = ((this._registers[VideoRegister.HDMA3] & 0x1F) << 8) | (this._registers[VideoRegister.HDMA4] & 0xF0);
                     this._hdmaTarget |= 0x8000;
 
                     this._hdmaMode = (value & 0x80) === 0 ? 0 : 1;
@@ -692,83 +661,83 @@ export class Display {
     }
 
     public get LY() {
-        return this._registers[DisplayRegister.LY];
+        return this._registers[VideoRegister.LY];
     }
 
     public set LY(val: number) {
-        this._registers[DisplayRegister.LY] = val;
+        this._registers[VideoRegister.LY] = val;
     }
 
     public get LYC() {
-        return this._registers[DisplayRegister.LYC];
+        return this._registers[VideoRegister.LYC];
     }
 
     public set LYC(val: number) {
-        this._registers[DisplayRegister.LYC] = val;
+        this._registers[VideoRegister.LYC] = val;
     }
 
     public get WX() {
-        return this._registers[DisplayRegister.WX];
+        return this._registers[VideoRegister.WX];
     }
 
     public set WX(val: number) {
-        this._registers[DisplayRegister.WX] = val;
+        this._registers[VideoRegister.WX] = val;
     }
 
     public get WY() {
-        return this._registers[DisplayRegister.WY];
+        return this._registers[VideoRegister.WY];
     }
 
     public set WY(val: number) {
-        this._registers[DisplayRegister.WY] = val;
+        this._registers[VideoRegister.WY] = val;
     }
 
     public get SCX() {
-        return this._registers[DisplayRegister.SCX];
+        return this._registers[VideoRegister.SCX];
     }
 
     public set SCX(val: number) {
-        this._registers[DisplayRegister.SCX] = val;
+        this._registers[VideoRegister.SCX] = val;
     }
 
     public get SCY() {
-        return this._registers[DisplayRegister.SCY];
+        return this._registers[VideoRegister.SCY];
     }
 
     public set SCY(val: number) {
-        this._registers[DisplayRegister.SCY] = val;
+        this._registers[VideoRegister.SCY] = val;
     }
 
     public get BGP() {
-        return this._registers[DisplayRegister.BGP];
+        return this._registers[VideoRegister.BGP];
     }
 
     public set BGP(val: number) {
-        this._registers[DisplayRegister.BGP] = val;
+        this._registers[VideoRegister.BGP] = val;
     }
 
     public get LCDC() {
-        return this._registers[DisplayRegister.LCDC];
+        return this._registers[VideoRegister.LCDC];
     }
 
     public set LCDC(val: number) {
-        this._registers[DisplayRegister.LCDC] = val;
+        this._registers[VideoRegister.LCDC] = val;
     }
 
     public get STAT() {
-        return this._registers[DisplayRegister.STAT];
+        return this._registers[VideoRegister.STAT];
     }
 
     public set STAT(val: number) {
-        this._registers[DisplayRegister.STAT] = val;
+        this._registers[VideoRegister.STAT] = val;
     }
 
-    public get mode() {
-        return this._registers[DisplayRegister.STAT] & 0x03;
+    public get mode(): VideoMode {
+        return this._registers[VideoRegister.STAT] & 0x03;
     }
 
-    public set mode(val: number) {
-        this._registers[DisplayRegister.STAT] = ((this._registers[DisplayRegister.STAT] & ~0x03) | val);
+    public set mode(val: VideoMode) {
+        this._registers[VideoRegister.STAT] = ((this._registers[VideoRegister.STAT] & ~0x03) | val);
     }
 
     public get gbcMode(): boolean {

@@ -1,6 +1,6 @@
-import { MemoryController, Memory } from "./memory";
+import { MemoryController, Memory } from "../memory";
 
-export class MBC3 implements MemoryController {
+export class MBC5 implements MemoryController {
     private _mmu: Memory;
     private _romBankNumber: number;
     private _ramBankNumber: number;
@@ -49,22 +49,16 @@ export class MBC3 implements MemoryController {
                 return;
 
             case 0x2000:
+                this._romBankNumber = (this._romBankNumber & 0b100000000) | (value & 0b11111111);
+                break;
+            
             case 0x3000:
-                this._romBankNumber = value;
+                this._romBankNumber = (this._romBankNumber & 0b011111111) | (value << 9);
                 return;
 
             case 0x4000:
             case 0x5000:
-                if (value <= 0x03) {
-                    this._ramBankNumber = value & 0x03;
-                } else {
-                    // console.log(`CLOCK REGISTER SELECT: ${value.toString(16)}`);
-                }
-                return;
-
-            case 0x6000:
-            case 0x7000:
-                // console.log(`LATCH CLOCK DATA = ${value.toString(16)}`);
+                this._ramBankNumber = value & 0x0F;
                 return;
 
             case 0xA000:

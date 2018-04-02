@@ -1,104 +1,19 @@
-import { Memory } from "./memory";
+import { Memory } from "../memory/memory";
 import { Opcodes, OpcodesCB, _opcodes, _cbopcodes } from "./opcodes";
-import { Display } from "./display";
-import { Audio } from "./audio";
+import { Video } from "../video/video";
+import { Audio } from "../audio/audio";
 import { Timer } from "./timer";
+import { RomType } from "./romtype";
+import { Instruction } from "./instruction";
+import { SpecialRegister, Register } from "./register";
+import { Flags } from "./flags";
+import { Interrupt } from "./interrupt";
+import { Key } from "./key";
 
-export enum Key {
-    A = 4,
-    B = 5,
-    Start = 7,
-    Select = 6,
-    Up = 2,
-    Down = 3,
-    Left = 1,
-    Right = 0
-}
-
-export enum SpecialRegister {
-    P1,
-    SB,
-    SC,
-    IF,
-    IE
-}
-
-export enum Interrupt {
-    VBlank,
-    LCDStat,
-    Timer,
-    Serial,
-    Joypad
-}
-
-export enum Flags {
-    ZeroFlag = 0b10000000,
-    AddSubFlag = 0b01000000,
-    HalfCarryFlag = 0b00100000,
-    CarryFlag = 0b00010000,
-    Unused = 0b00001111
-}
-
-export enum Register {
-    A = 0,
-    B = 2,
-    C = 3,
-    D = 4,
-    E = 5,
-    H = 6,
-    L = 7,
-    F = 1
-}
-
-export enum RomType {
-    UNKNOWN = -1,
-    ROMONLY = 0x00,
-    MBC1 = 0x01,
-    MBC1RAM = 0x02,
-    MBC1RAMBATTERY = 0x03,
-    MBC2 = 0x05,
-    MBC2BATTERY = 0x06,
-    ROMRAM = 0x08,
-    ROMRAMBATTERY = 0x09,
-    MMMO1 = 0xB,
-    MMMO1RAM = 0xC,
-    MMMO1RAMBATTERY = 0xD,
-    MBC3TIMERBATTERY = 0xF,
-    MBC3TIMERRAMBATTERY = 0x10,
-    MBC3 = 0x11,
-    MBC3RAM = 0x12,
-    MBC3RAMBATTERY = 0x13,
-    MBC5 = 0x19,
-    MBC5RAM = 0x1A,
-    MBC5RAMBATTERY = 0x1B,
-    MBC5RUMBLE = 0x1C,
-    MBC5RUMBLERAM = 0x1D,
-    MBC5RUMBLERAMBATTERY = 0x1E,
-    MBC6 = 0x20,
-    MBC7SENSORRUMBLERAMBATTERY = 0x22,
-    POCKETCAMERA = 0xFC,
-    BANDAITAMA5 = 0xFD,
-    HUC3 = 0xFE,
-    HUC1RAMBATTERY = 0xFF
-}
-
-export interface Instruction
-{
-    isCB: boolean;
-    opcode: number;
-    pc: number;
-    ticks: number;
-    cpu: CPU;
-
-    registers: Uint8Array;
-    registers16: Uint16Array;
-    opcodeName: string;
-
-    exec: (instruction: Instruction) => void;
-}
+export type RegisterType = "A" | "B" | "C" | "D" | "E" | "F" | "H" | "L" | "AF" | "SP" | "PC" | "BC" | "DE" | "HL";
 
 export class CPU {
-    private _display: Display;
+    private _display: Video;
     private _audio: Audio;
     private _timer: Timer;
     
@@ -112,8 +27,8 @@ export class CPU {
     private _debugString: string;
     private _waitForInterrupt: boolean;
 
-    private _registerMap: { [key: number]: string };
-    private _byteRegisterMap: { [key: number]: string };
+    private _registerMap: { [key: number]: RegisterType };
+    private _byteRegisterMap: { [key: number]: RegisterType };
 
     private _romType: RomType;
     private _romName: string;
@@ -136,7 +51,7 @@ export class CPU {
         new OpcodesCB();
 
         this._memory = new Memory(this);
-        this._display = new Display(this);
+        this._display = new Video(this);
         this._audio = new Audio(this);
         this._timer = new Timer(this);
         this._waitForInterrupt = false;
@@ -189,6 +104,8 @@ export class CPU {
         };
 
         this._romType = RomType.UNKNOWN;
+        this._romHeaderChecksum = 0;
+        this._romGlobalChecksum = 0;
         this._joypadState = 0xFF;
 
         this.P1 = 0xFF;
@@ -264,7 +181,7 @@ export class CPU {
     public fetchAndDecode(): Instruction {
         let instruction: Instruction = {
             isCB: false,
-            pc: this.PC,
+            pc: this.get("PC"),
             opcode: 0,
             ticks: 0,
             cpu: this,
@@ -310,7 +227,10 @@ export class CPU {
         }
 
         const instruction = this.fetchAndDecode();
-        instruction.exec(instruction);
+
+        if (instruction.exec !== null) {
+            instruction.exec(instruction);
+        }
 
         if (CPU.onInstruction) {
             CPU.onInstruction(this, instruction);
@@ -331,8 +251,12 @@ export class CPU {
     }
 
     public readu8(): number {
-        const result = this.MMU.read8(this.PC);
-        this.PC++;
+        let pc = this.get("PC");
+
+        const result = this.MMU.read8(pc);
+        pc++;
+
+        this.set("PC", pc);
 
         return result;
     }
@@ -359,33 +283,41 @@ export class CPU {
     }
 
     public enableFlag(flag: Flags): void {
-        this.F |= flag;
+        this.set("F", this.get("F") | flag);
     }
 
     public disableFlag(flag: Flags): void {
-        this.F &= ~flag;
+        this.set("F", this.get("F") & ~flag);
     }
 
     public isFlagSet(flag: Flags): boolean {
-        return (this.F & flag) !== 0;
+        return (this.get("F") & flag) !== 0;
     }
 
     public clearFlags(): void {
-        this.F = 0;
+        this.set("F", 0);
     }
 
     public pushStack(val: number): void {
-        this.SP--;
-        this.MMU.write8(this.SP, val >> 8);
-        this.SP--;
-        this.MMU.write8(this.SP, val & 0xFF);
+        let sp = this.get("SP");
+
+        sp--;
+        this.MMU.write8(sp, val >> 8);
+        sp--;
+        this.MMU.write8(sp, val & 0xFF);
+
+        this.set("SP", sp);
     }
 
     public popStack(): number {
-        const val1 = this.MMU.read8(this.SP);
-        this.SP++;
-        const val2 = this.MMU.read8(this.SP);
-        this.SP++;
+        let sp = this.get("SP");
+
+        const val1 = this.MMU.read8(sp);
+        sp++;
+        const val2 = this.MMU.read8(sp);
+        sp++;
+
+        this.set("SP", sp);
 
         return (val2 << 8) | val1;
     }
@@ -419,7 +351,7 @@ export class CPU {
         }
     }
 
-    public readRegisterType(val: number, useAF: boolean): string {
+    public readRegisterType(val: number, useAF: boolean): RegisterType {
         if ((val & 0x03) == 0x03) {
             return useAF ? "AF" : this._registerMap[0x03];
         } else {
@@ -427,7 +359,7 @@ export class CPU {
         }
     }
 
-    public readByteRegisterType(val: number): string {
+    public readByteRegisterType(val: number): RegisterType {
         return this._byteRegisterMap[val & 0x07];
     }
 
@@ -478,8 +410,144 @@ export class CPU {
     private _fireInterrupt(interrupt: Interrupt): void {
         this.enableInterrupts = false;
 
-        this.pushStack(this.PC);
-        this.PC = 0x0040 + (interrupt * 8);
+        this.pushStack(this.get("PC"));
+        this.set("PC", 0x0040 + (interrupt * 8));
+    }
+
+    public get(register: RegisterType): number {
+        switch (register) {
+            case "A":
+                return this._registers[Register.A];
+            
+            case "B":
+                return this._registers[Register.B];
+
+            case "C":
+                return this._registers[Register.C];
+
+            case "D":
+                return this._registers[Register.D];
+
+            case "E":
+                return this._registers[Register.E];
+
+            case "H":
+                return this._registers[Register.H];
+
+            case "L":
+                return this._registers[Register.L];
+
+            case "F":
+                return this._registers[Register.F];
+            
+            case "AF":
+                return (this._registers[Register.A] << 8) | this._registers[Register.F];
+
+            case "SP":
+                return this._registers16[0];
+            
+            case "PC":
+                return this._registers16[1];
+            
+            case "BC":
+                return (this._registers[Register.B] << 8) | this._registers[Register.C];
+
+            case "DE":
+                return (this._registers[Register.D] << 8) | this._registers[Register.E];
+
+            case "HL":
+                return (this._registers[Register.H] << 8) | this._registers[Register.L];
+        }
+    }
+
+    public set(register: RegisterType, value: number): number {
+        switch (register) {
+            case "A":
+                this._registers[Register.A] = value;
+                return this._registers[Register.A];
+
+            case "B":
+                this._registers[Register.B] = value;
+                return this._registers[Register.B];
+
+            case "C":
+                this._registers[Register.C] = value;
+                return this._registers[Register.C];
+
+            case "D":
+                this._registers[Register.D] = value;
+                return this._registers[Register.D];
+
+            case "E":
+                this._registers[Register.E] = value;
+                return this._registers[Register.E];
+
+            case "H":
+                this._registers[Register.H] = value;
+                return this._registers[Register.H];
+
+            case "L":
+                this._registers[Register.L] = value;
+                return this._registers[Register.L];
+
+            case "F":
+                this._registers[Register.F] = value;
+                return this._registers[Register.F];
+
+            case "AF":
+                this._registers16[2] = value;
+
+                this._registers[Register.A] = this._registers16[2] >> 8;
+                this._registers[Register.F] = this._registers16[2] & 0xFF;
+                
+                return this._registers16[2];
+
+            case "SP":
+                this._registers16[0] = value;
+                return this._registers16[0];
+
+            case "PC":
+                this._registers16[1] = value;
+                return this._registers16[1];
+
+            case "BC":
+                this._registers16[2] = value;
+
+                this._registers[Register.B] = this._registers16[2] >> 8;
+                this._registers[Register.C] = this._registers16[2] & 0xFF;
+
+                return this._registers16[2];
+
+            case "DE":
+                this._registers16[2] = value;
+
+                this._registers[Register.D] = this._registers16[2] >> 8;
+                this._registers[Register.E] = this._registers16[2] & 0xFF;
+
+                return this._registers16[2];
+
+            case "HL":
+                this._registers16[2] = value;
+
+                this._registers[Register.H] = this._registers16[2] >> 8;
+                this._registers[Register.L] = this._registers16[2] & 0xFF;
+
+                return this._registers16[2];
+        }
+    }
+
+    public increment(register: RegisterType, num: number = 1): number {
+        let tmp = this.get(register);
+        tmp += num;
+
+        return this.set(register, tmp);
+    }
+
+    public decrement(register: RegisterType, num: number = 1): number {
+        let tmp = this.get(register);
+        tmp -= num;
+
+        return this.set(register, tmp);
     }
 
     get enableInterrupts() {
@@ -496,62 +564,6 @@ export class CPU {
 
     set waitForInterrupt(val: boolean) {
         this._waitForInterrupt = val;
-    }
-
-    get A() {
-        return this._registers[Register.A];
-    }
-
-    get B() {
-        return this._registers[Register.B];
-    }
-
-    get C() {
-        return this._registers[Register.C];
-    }
-
-    get D() {
-        return this._registers[Register.D];
-    }
-
-    get E() {
-        return this._registers[Register.E];
-    }
-
-    get H() {
-        return this._registers[Register.H];
-    }
-
-    get L() {
-        return this._registers[Register.L];
-    }
-
-    get F() {
-        return this._registers[Register.F];
-    }
-
-    get SP() {
-        return this._registers16[0];
-    }
-
-    get PC() {
-        return this._registers16[1];
-    }
-
-    get AF() {
-        return (this.A << 8) | this.F;
-    }
-
-    get BC() {
-        return (this.B << 8) | this.C;
-    }
-
-    get DE() {
-        return (this.D << 8) | this.E;
-    }
-
-    get HL() {
-        return (this.H << 8) | this.L;
     }
 
     get MMU() {
@@ -576,74 +588,6 @@ export class CPU {
 
     set P1(val: number) {
         this._registerWrite(SpecialRegister.P1, val);
-    }
-
-    set A(val: number) {
-        this._registers[Register.A] = val;
-    }
-
-    set F(val: number) {
-        this._registers[Register.F] = val;
-    }
-
-    set B(val: number) {
-        this._registers[Register.B] = val;
-    }
-
-    set C(val: number) {
-        this._registers[Register.C] = val;
-    }
-
-    set D(val: number) {
-        this._registers[Register.D] = val;
-    }
-
-    set E(val: number) {
-        this._registers[Register.E] = val;
-    }
-    
-    set H(val: number) {
-        this._registers[Register.H] = val;
-    }
-
-    set L(val: number) {
-        this._registers[Register.L] = val;
-    }
-
-    set AF(val: number) {
-        this._registers16[2] = val;
-
-        this._registers[Register.A] = this._registers16[2] >> 8;
-        this._registers[Register.F] = this._registers16[2] & 0xFF;
-    }
-
-    set BC(val: number) {
-        this._registers16[2] = val;
-
-        this._registers[Register.B] = this._registers16[2] >> 8;
-        this._registers[Register.C] = this._registers16[2] & 0xFF;
-    }
-
-    set DE(val: number) {
-        this._registers16[2] = val;
-
-        this._registers[Register.D] = this._registers16[2] >> 8;
-        this._registers[Register.E] = this._registers16[2] & 0xFF;
-    }
-
-    set HL(val: number) {
-        this._registers16[2] = val;
-
-        this._registers[Register.H] = this._registers16[2] >> 8;
-        this._registers[Register.L] = this._registers16[2] & 0xFF;
-    }
-
-    set SP(val: number) {
-        this._registers16[0] = val;
-    }
-
-    set PC(val: number) {
-        this._registers16[1] = val;
     }
 
     get romName(): string {

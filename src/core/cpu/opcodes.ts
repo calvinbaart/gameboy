@@ -1,4 +1,6 @@
-import { CPU, Flags, Instruction } from "./cpu";
+import { CPU, RegisterType } from "./cpu";
+import { Instruction } from "./instruction";
+import { Flags } from "./flags";
 
 enum OpcodeType {
     Default,
@@ -15,9 +17,9 @@ export const _cbopcodes: { [key: number]: [number, (instruction: Instruction) =>
 export function Opcode(opcode: number, cycles: number, debug: string, type: OpcodeType = OpcodeType.Default) {
     return (target: any, property: string, descriptor: Descriptor) => {
         if (type === OpcodeType.Default) {
-            _opcodes[opcode] = [cycles, descriptor.value, debug];
+            _opcodes[opcode] = [cycles, descriptor.value as (instruction: Instruction) => void, debug];
         } else {
-            _cbopcodes[opcode] = [cycles, descriptor.value, debug];
+            _cbopcodes[opcode] = [cycles, descriptor.value as (instruction: Instruction) => void, debug];
         }
     };
 }
@@ -42,23 +44,24 @@ function toggleZeroFlag(cpu: CPU, result: number): void {
     }
 }
 
-function SUB(register: string | number, useCarry: boolean, cpu: CPU): void {
+function SUB(register: RegisterType | number | null, useCarry: boolean, cpu: CPU): void {
     let val = 0;
 
     cpu.enableFlag(Flags.AddSubFlag);
 
     if (register === null) {
-        let tmp = cpu.MMU.read8(cpu.HL);
+        let tmp = cpu.MMU.read8(cpu.get("HL"));
 
         val = tmp;
     } else if (typeof register === "string") {
-        val = cpu[register];
+        val = cpu.get(register);
     } else {
         val = register as number;
     }
 
+    const A = cpu.get("A");
     let extra = (useCarry && cpu.isFlagSet(Flags.CarryFlag)) ? 1 : 0;
-    let result = cpu.A - val - extra;
+    let result = A - val - extra;
 
     if (result < 0) {
         cpu.enableFlag(Flags.CarryFlag);
@@ -66,51 +69,53 @@ function SUB(register: string | number, useCarry: boolean, cpu: CPU): void {
         cpu.disableFlag(Flags.CarryFlag);
     }
 
-    if ((cpu.A & 0xF) - (val & 0xF) - extra < 0) {
+    if ((A & 0xF) - (val & 0xF) - extra < 0) {
         cpu.enableFlag(Flags.HalfCarryFlag);
     } else {
         cpu.disableFlag(Flags.HalfCarryFlag);
     }
 
-    cpu.A = result;
+    cpu.set("A", result);
     toggleZeroFlag(cpu, result);
 }
 
-function ADD_16(register1: string, register2: string | number, cpu: CPU): void {
+function ADD_16(register1: RegisterType, register2: RegisterType | number, cpu: CPU): void {
     cpu.clearFlags();
     
     let val = 0;
     if (typeof register2 === "string") {
-        val = cpu[register2];
+        val = cpu.get(register2);
     } else {
         val = register2 as number;
     }
 
-    const result = cpu[register1] + val;
+    const value1 = cpu.get(register1);
+    const result = value1 + val;
 
-    if (((cpu[register1] ^ val ^ (result & 0xFFFF)) & 0x100) == 0x100) {
+    if (((value1 ^ val ^ (result & 0xFFFF)) & 0x100) == 0x100) {
         cpu.enableFlag(Flags.CarryFlag);
     }
 
-    if (((cpu[register1] ^ val ^ (result & 0xFFFF)) & 0x10) == 0x10) {
+    if (((value1 ^ val ^ (result & 0xFFFF)) & 0x10) == 0x10) {
         cpu.enableFlag(Flags.HalfCarryFlag);
     }
 
-    cpu[register1] = result;
+    cpu.set(register1, result);
 }
 
-function ADD(register: string | number, addCarry: boolean, cpu: CPU): void {
+function ADD(register: RegisterType | number | null, addCarry: boolean, cpu: CPU): void {
     let val = 0;
     if (register === null) {
-        val = cpu.MMU.read8(cpu.HL);
+        val = cpu.MMU.read8(cpu.get("HL"));
     } else if (typeof register === "string") {
-        val = cpu[register];
+        val = cpu.get(register);
     } else {
         val = register as number;
     }
 
+    const A = cpu.get("A");
     let extra = (addCarry && cpu.isFlagSet(Flags.CarryFlag)) ? 1 : 0;
-    let result = cpu.A + val + extra;
+    let result = A + val + extra;
 
     if (result > 0xFF) {
         cpu.enableFlag(Flags.CarryFlag);
@@ -118,27 +123,27 @@ function ADD(register: string | number, addCarry: boolean, cpu: CPU): void {
         cpu.disableFlag(Flags.CarryFlag);
     }
 
-    if ((cpu.A & 0xF) + (val & 0xF) + extra > 0xF) {
+    if ((A & 0xF) + (val & 0xF) + extra > 0xF) {
         cpu.enableFlag(Flags.HalfCarryFlag);
     } else {
         cpu.disableFlag(Flags.HalfCarryFlag);
     }
 
-    cpu.A = result;
+    cpu.set("A", result);
     toggleZeroFlag(cpu, result);
 
     cpu.disableFlag(Flags.AddSubFlag);
 }
 
-function SRL(register: string|null, cpu: CPU): void {
+function SRL(register: RegisterType | null, cpu: CPU): void {
     cpu.clearFlags();
 
     let result = 0;
 
     if (register === null) {
-        result = cpu.MMU.read8(cpu.HL);
+        result = cpu.MMU.read8(cpu.get("HL"));
     } else {
-        result = cpu[register];
+        result = cpu.get(register);
     }
 
     if ((result & 0x01) != 0) {
@@ -148,38 +153,42 @@ function SRL(register: string|null, cpu: CPU): void {
     result >>= 1;
 
     if (register === null) {
-        cpu.MMU.write8(cpu.HL, result);
+        cpu.MMU.write8(cpu.get("HL"), result);
     } else {
-        cpu[register] = result;
+        cpu.set(register, result);
     }
     
     toggleZeroFlag(cpu, result);
 }
 
-function SWAP(register: string|null, cpu: CPU): void {
+function SWAP(register: RegisterType | null, cpu: CPU): void {
     cpu.clearFlags();
 
     let result = 0;
     if (register === null) {
-        let value = cpu.MMU.read8(cpu.HL);
+        const HL = cpu.get("HL");
+
+        let value = cpu.MMU.read8(HL);
         result = ((value & 0x0F) << 4) | ((value & 0xF0) >> 4);
 
-        cpu.MMU.write8(cpu.HL, result);
+        cpu.MMU.write8(HL, result);
     } else {
-        result = ((cpu[register] & 0x0F) << 4) | ((cpu[register] & 0xF0) >> 4);
-        cpu[register] = result;
+        const reg = cpu.get(register);
+
+        result = ((reg & 0x0F) << 4) | ((reg & 0xF0) >> 4);
+        cpu.set(register, result);
     }
 
     toggleZeroFlag(cpu, result);
 }
 
-function BIT(register: string | null, bit: number, cpu: CPU): void {
+function BIT(register: RegisterType | null, bit: number, cpu: CPU): void {
     let value = 0;
     
     if (register === null) {
-        value = cpu.MMU.read8(cpu.HL);
+        value = cpu.MMU.read8(cpu.get("HL"));
     } else {
-        value = cpu[register];
+        value = cpu.get(register);
     }
 
     toggleZeroFlag(cpu, ((value >> bit) & 0x01));
@@ -191,15 +200,17 @@ function CP(val: number, cpu: CPU): void {
     cpu.clearFlags();
     cpu.enableFlag(Flags.AddSubFlag);
 
-    if (val === cpu.A) {
+    const A = cpu.get("A");
+
+    if (val === A) {
         cpu.enableFlag(Flags.ZeroFlag);
     }
 
-    if (cpu.A < val) {
+    if (A < val) {
         cpu.enableFlag(Flags.CarryFlag);
     }
 
-    if (((cpu.A - val) & 0xF) > (cpu.A & 0xF)) {
+    if (((A - val) & 0xF) > (A & 0xF)) {
         cpu.enableFlag(Flags.HalfCarryFlag);
     }
 }
@@ -217,12 +228,12 @@ export class Opcodes {
         const val = instruction.cpu.readu16();
         const register = instruction.cpu.readRegisterType(instruction.opcode >> 4, false);
 
-        instruction.cpu[register] = val;
+        instruction.cpu.set(register, val);
     }
 
     @Opcode(0x02, 8, "LD (BC),A")
     public static LD_0x02(instruction: Instruction): void {
-        instruction.cpu.MMU.write8(instruction.cpu.BC, instruction.cpu.A);
+        instruction.cpu.MMU.write8(instruction.cpu.get("BC"), instruction.cpu.get("A"));
     }
 
     @Opcode(0x03, 8, "INC BC")
@@ -232,7 +243,7 @@ export class Opcodes {
     public static INC_0x03x13x23x33(instruction: Instruction): void {
         const register = instruction.cpu.readRegisterType(instruction.opcode >> 4, false);
 
-        instruction.cpu[register]++;
+        instruction.cpu.increment(register);
     }
 
     @Opcode(0x04, 4, "INC B")
@@ -248,15 +259,16 @@ export class Opcodes {
         instruction.cpu.disableFlag(Flags.ZeroFlag);
         instruction.cpu.disableFlag(Flags.AddSubFlag);
 
-        instruction.cpu[register]++;
+        instruction.cpu.increment(register);
 
-        if ((instruction.cpu[register] & 0x0F) == 0x00) {
+        const val = instruction.cpu.get(register);
+        if ((val & 0x0F) == 0x00) {
             instruction.cpu.enableFlag(Flags.HalfCarryFlag);
         } else {
             instruction.cpu.disableFlag(Flags.HalfCarryFlag);
         }
 
-        toggleZeroFlag(instruction.cpu, instruction.cpu[register]);
+        toggleZeroFlag(instruction.cpu, val);
     }
 
     @Opcode(0x05, 4, "DEC B")
@@ -268,13 +280,13 @@ export class Opcodes {
     @Opcode(0x3D, 4, "DEC A")
     public static DEC_0x05x0Dx15x1Dx25x2Dx3D(instruction: Instruction): void {
         const register = instruction.cpu.readByteRegisterType(instruction.opcode >> 3);
-        const result = (instruction.cpu[register] - 1) & 0xFF;
 
         instruction.cpu.enableFlag(Flags.AddSubFlag);
         instruction.cpu.disableFlag(Flags.ZeroFlag);
 
-        instruction.cpu[register] = result;
+        instruction.cpu.decrement(register);
 
+        const result = instruction.cpu.get(register);
         if ((result & 0x0F) == 0x0F) {
             instruction.cpu.enableFlag(Flags.HalfCarryFlag);
         } else {
@@ -295,12 +307,12 @@ export class Opcodes {
         const register = instruction.cpu.readByteRegisterType(instruction.opcode >> 3);
         const val = instruction.cpu.readu8();
 
-        instruction.cpu[register] = val;
+        instruction.cpu.set(register, val);
     }
 
     @Opcode(0x07, 4, "RLCA")
     public static RLCA_0x07(instruction: Instruction): void {
-        let val = instruction.cpu.A;
+        let val = instruction.cpu.get("A");
         instruction.cpu.clearFlags();
 
         if ((val & 0x80) != 0) {
@@ -312,15 +324,16 @@ export class Opcodes {
             val <<= 1;
         }
 
-        instruction.cpu.A = val;
+        instruction.cpu.set("A", val);
     }
 
     @Opcode(0x08, 20, "LD (a16),SP")
     public static LD_0x08(instruction: Instruction): void {
         const addr = instruction.cpu.readu16();
 
-        instruction.cpu.MMU.write8(addr + 0, instruction.cpu.SP & 0xFF);
-        instruction.cpu.MMU.write8(addr + 1, (instruction.cpu.SP >> 8) & 0xFF);
+        const SP = instruction.cpu.get("SP");
+        instruction.cpu.MMU.write8(addr + 0, SP & 0xFF);
+        instruction.cpu.MMU.write8(addr + 1, (SP >> 8) & 0xFF);
     }
 
     @Opcode(0x09, 8, "ADD HL,BC")
@@ -332,33 +345,36 @@ export class Opcodes {
 
         instruction.cpu.disableFlag(Flags.AddSubFlag);
 
-        let result = (instruction.cpu.HL + instruction.cpu[register]) & 0xFFFF;
+        const HL = instruction.cpu.get("HL");
+        const reg = instruction.cpu.get(register);
 
-        if (result < instruction.cpu.HL) {
+        let result = (HL + reg) & 0xFFFF;
+
+        if (result < HL) {
             instruction.cpu.enableFlag(Flags.CarryFlag);
         } else {
             instruction.cpu.disableFlag(Flags.CarryFlag);
         }
 
-        if ((result ^ instruction.cpu.HL ^ instruction.cpu[register]) & 0x1000) {
+        if ((result ^ HL ^ reg) & 0x1000) {
             instruction.cpu.enableFlag(Flags.HalfCarryFlag);
         } else {
             instruction.cpu.disableFlag(Flags.HalfCarryFlag);
         }
 
-        instruction.cpu.HL = result;
+        instruction.cpu.set("HL", result);
     }
 
     @Opcode(0x0A, 8, "LD A,(BC)")
     public static LD_0x0A(instruction: Instruction): void {
-        let val = instruction.cpu.MMU.read8(instruction.cpu.BC);
+        let val = instruction.cpu.MMU.read8(instruction.cpu.get("BC"));
 
-        instruction.cpu.A = val;
+        instruction.cpu.set("A", val);
     }
 
     @Opcode(0x0F, 4, "RRCA")
     public static RRCA_0x0F(instruction: Instruction): void {
-        let val = instruction.cpu.A;
+        let val = instruction.cpu.get("A");
         instruction.cpu.clearFlags();
 
         if ((val & 0x01) != 0) {
@@ -370,7 +386,7 @@ export class Opcodes {
             val >>= 1;
         }
 
-        instruction.cpu.A = val;
+        instruction.cpu.set("A", val);
     }
 
     @Opcode(0x0B, 8, "DEC BC")
@@ -380,7 +396,7 @@ export class Opcodes {
     public static DEC_0x0B(instruction: Instruction): void {
         const register = instruction.cpu.readRegisterType(instruction.opcode >> 4, false);
 
-        instruction.cpu[register]--;
+        instruction.cpu.decrement(register);
     }
 
     @Opcode(0x10, 0, "STOP 0")
@@ -390,14 +406,14 @@ export class Opcodes {
 
     @Opcode(0x12, 8, "LD (DE),A")
     public static LD_0x12(instruction: Instruction): void {
-        instruction.cpu.MMU.write8(instruction.cpu.DE, instruction.cpu.A);
+        instruction.cpu.MMU.write8(instruction.cpu.get("DE"), instruction.cpu.get("A"));
     }
 
     @Opcode(0x17, 4, "RLA")
     public static RLA_0x17(instruction: Instruction): void {
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
         const carry = instruction.cpu.isFlagSet(Flags.CarryFlag) ? 1 : 0;
-        let result = instruction.cpu[register];
+        let result = instruction.cpu.get(register);
 
         instruction.cpu.clearFlags();
 
@@ -408,26 +424,26 @@ export class Opcodes {
         result <<= 1;
         result |= carry;
 
-        instruction.cpu[register] = result;
+        instruction.cpu.set(register, result);
     }
 
     @Opcode(0x18, 12, "JR r8")
     public static JR_0x18(instruction: Instruction): void {
         const relative = instruction.cpu.reads8();
 
-        instruction.cpu.PC += relative;
+        instruction.cpu.increment("PC", relative);
     }
 
     @Opcode(0x1A, 8, "LD A,(DE)")
     public static LD_0x1A(instruction: Instruction): void {
-        instruction.cpu.A = instruction.cpu.MMU.read8(instruction.cpu.DE);
+        instruction.cpu.set("A", instruction.cpu.MMU.read8(instruction.cpu.get("DE")));
     }
 
     @Opcode(0x1F, 4, "RRA")
     public static RRA_0x1F(instruction: Instruction): void {
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
         const carry = instruction.cpu.isFlagSet(Flags.CarryFlag) ? 0x80 : 0;
-        let result = instruction.cpu[register];
+        let result = instruction.cpu.get(register);
 
         instruction.cpu.clearFlags();
 
@@ -438,7 +454,7 @@ export class Opcodes {
         result >>= 1;
         result |= carry;
 
-        instruction.cpu[register] = result;
+        instruction.cpu.set(register, result);
     }
 
     @Opcode(0x20, 8, "JR NZ,r8")
@@ -468,20 +484,20 @@ export class Opcodes {
         }
 
         if (check) {
-            instruction.cpu.PC += relative;
+            instruction.cpu.increment("PC", relative);
             instruction.ticks += 4;
         }
     }
 
     @Opcode(0x22, 8, "LD (HL+),A")
     public static LD_0x22(instruction: Instruction): void {
-        instruction.cpu.MMU.write8(instruction.cpu.HL, instruction.cpu.A);
-        instruction.cpu.HL++;
+        instruction.cpu.MMU.write8(instruction.cpu.get("HL"), instruction.cpu.get("A"));
+        instruction.cpu.increment("HL");
     }
 
     @Opcode(0x27, 4, "DAA")
     public static DAA_0x27(instruction: Instruction): void {
-        let a = instruction.cpu.A;
+        let a = instruction.cpu.get("A");
 
         if (!instruction.cpu.isFlagSet(Flags.AddSubFlag)) {
             if (instruction.cpu.isFlagSet(Flags.HalfCarryFlag) || (a & 0xF) > 9) {
@@ -501,32 +517,34 @@ export class Opcodes {
             }
         }
 
-        instruction.cpu.F &= ~(Flags.HalfCarryFlag | Flags.ZeroFlag);
+        let F = instruction.cpu.get("F");
+        F &= ~(Flags.HalfCarryFlag | Flags.ZeroFlag);
 
         if ((a & 0x100) == 0x100) {
-            instruction.cpu.F |= Flags.CarryFlag;
+            F |= Flags.CarryFlag;
         }
 
         a &= 0xFF;
 
         if (a == 0) {
-            instruction.cpu.F |= Flags.ZeroFlag;
+            F |= Flags.ZeroFlag;
         }
 
-        instruction.cpu.A = a;
+        instruction.cpu.set("F", F);
+        instruction.cpu.set("A", a);
 
-        toggleZeroFlag(instruction.cpu, instruction.cpu.A);
+        toggleZeroFlag(instruction.cpu, a & 0xFF);
     }
 
     @Opcode(0x2A, 8, "LD A,(HL+)")
     public static LD_0x2A(instruction: Instruction): void {
-        instruction.cpu.A = instruction.cpu.MMU.read8(instruction.cpu.HL);
-        instruction.cpu.HL++;
+        instruction.cpu.set("A", instruction.cpu.MMU.read8(instruction.cpu.get("HL")));
+        instruction.cpu.increment("HL");
     }
 
     @Opcode(0x2F, 4, "CPL")
     public static CPL_0x2F(instruction: Instruction): void {
-        instruction.cpu.A = instruction.cpu.A ^ 0xFF;
+        instruction.cpu.set("A", instruction.cpu.get("A") ^ 0xFF);
 
         instruction.cpu.enableFlag(Flags.HalfCarryFlag);
         instruction.cpu.enableFlag(Flags.AddSubFlag);
@@ -534,9 +552,9 @@ export class Opcodes {
 
     @Opcode(0x32, 8, "LD (HL-),A")
     public static LD_0x32(instruction: Instruction): void {
-        instruction.cpu.MMU.write8(instruction.cpu.HL, instruction.cpu.A);
+        instruction.cpu.MMU.write8(instruction.cpu.get("HL"), instruction.cpu.get("A"));
 
-        instruction.cpu.HL--;
+        instruction.cpu.decrement("HL");
     }
 
     @Opcode(0x34, 12, "INC (HL)")
@@ -546,7 +564,8 @@ export class Opcodes {
         instruction.cpu.disableFlag(Flags.ZeroFlag);
         instruction.cpu.disableFlag(Flags.AddSubFlag);
 
-        let val = (instruction.cpu.MMU.read8(instruction.cpu.HL) + 1) & 0xFF;
+        const HL = instruction.cpu.get("HL");
+        let val = (instruction.cpu.MMU.read8(HL) + 1) & 0xFF;
 
         toggleZeroFlag(instruction.cpu, val);
 
@@ -556,7 +575,7 @@ export class Opcodes {
             instruction.cpu.disableFlag(Flags.HalfCarryFlag);
         }
 
-        instruction.cpu.MMU.write8(instruction.cpu.HL, val);
+        instruction.cpu.MMU.write8(HL, val);
     }
 
     @Opcode(0x35, 12, "DEC (HL)")
@@ -564,7 +583,8 @@ export class Opcodes {
         instruction.cpu.enableFlag(Flags.AddSubFlag);
         instruction.cpu.disableFlag(Flags.ZeroFlag);
 
-        let val = (instruction.cpu.MMU.read8(instruction.cpu.HL) - 1) & 0xFF;
+        const HL = instruction.cpu.get("HL");
+        let val = (instruction.cpu.MMU.read8(HL) - 1) & 0xFF;
 
         if ((val & 0xF) == 0xF) {
             instruction.cpu.enableFlag(Flags.HalfCarryFlag);
@@ -574,14 +594,14 @@ export class Opcodes {
 
         toggleZeroFlag(instruction.cpu, val);
 
-        instruction.cpu.MMU.write8(instruction.cpu.HL, val);
+        instruction.cpu.MMU.write8(HL, val);
     }
 
     @Opcode(0x36, 12, "LD (HL),d8")
     public static LD_0x36(instruction: Instruction): void {
         const val = instruction.cpu.readu8();
 
-        instruction.cpu.MMU.write8(instruction.cpu.HL, val);
+        instruction.cpu.MMU.write8(instruction.cpu.get("HL"), val);
     }
 
     @Opcode(0x37, 4, "SCF")
@@ -593,8 +613,8 @@ export class Opcodes {
 
     @Opcode(0x3A, 8, "LD A,(HL-)")
     public static LD_0x3A(instruction: Instruction): void {
-        instruction.cpu.A = instruction.cpu.MMU.read8(instruction.cpu.HL);
-        instruction.cpu.HL--;
+        instruction.cpu.set("A", instruction.cpu.MMU.read8(instruction.cpu.get("HL")));
+        instruction.cpu.decrement("HL");
     }
 
     @Opcode(0x3F, 4, "CCF")
@@ -662,7 +682,7 @@ export class Opcodes {
         const r1 = instruction.cpu.readByteRegisterType(instruction.opcode >> 3);
         const r2 = instruction.cpu.readByteRegisterType(instruction.opcode);
 
-        instruction.cpu[r1] = instruction.cpu[r2];
+        instruction.cpu.set(r1, instruction.cpu.get(r2));
     }
 
     @Opcode(0x46, 8, "LD B,(HL)")
@@ -675,9 +695,9 @@ export class Opcodes {
     public static LD_0x46(instruction: Instruction): void {
         const register = instruction.cpu.readByteRegisterType(instruction.opcode >> 3);
 
-        let val = instruction.cpu.MMU.read8(instruction.cpu.HL);
+        let val = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
 
-        instruction.cpu[register] = val;
+        instruction.cpu.set(register, val);
     }
 
     @Opcode(0x70, 8, "LD (HL),B")
@@ -690,7 +710,7 @@ export class Opcodes {
     public static LD_0x70(instruction: Instruction): void {
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
 
-        instruction.cpu.MMU.write8(instruction.cpu.HL, instruction.cpu[register]);
+        instruction.cpu.MMU.write8(instruction.cpu.get("HL"), instruction.cpu.get(register));
     }
 
     @Opcode(0x76, 0, "HALT")
@@ -739,23 +759,25 @@ export class Opcodes {
     @Opcode(0xA7, 4, "AND A")
     public static AND_0xA0(instruction: Instruction): void {
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
+        const result = instruction.cpu.get("A") & instruction.cpu.get(register);
 
         instruction.cpu.clearFlags();
+        instruction.cpu.set("A", result);
 
-        instruction.cpu.A &= instruction.cpu[register];
-        toggleZeroFlag(instruction.cpu, instruction.cpu.A);
+        toggleZeroFlag(instruction.cpu, result);
 
         instruction.cpu.enableFlag(Flags.HalfCarryFlag);
     }
 
     @Opcode(0xA6, 8, "AND (HL)")
     public static AND_0xA6(instruction: Instruction): void {
-        const val = instruction.cpu.MMU.read8(instruction.cpu.HL);
+        const val = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
+        const result = instruction.cpu.get("A") & val;
 
         instruction.cpu.clearFlags();
+        instruction.cpu.set("A", result);
 
-        instruction.cpu.A &= val;
-        toggleZeroFlag(instruction.cpu, instruction.cpu.A);
+        toggleZeroFlag(instruction.cpu, result);
 
         instruction.cpu.enableFlag(Flags.HalfCarryFlag);
     }
@@ -769,21 +791,23 @@ export class Opcodes {
     @Opcode(0xAF, 4, "XOR A")
     public static XOR_0xA9(instruction: Instruction): void {
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
+        const result = instruction.cpu.get("A") ^ instruction.cpu.get(register);
 
         instruction.cpu.clearFlags();
-        instruction.cpu.A ^= instruction.cpu[register];
+        instruction.cpu.set("A", result);
 
-        toggleZeroFlag(instruction.cpu, instruction.cpu.A);
+        toggleZeroFlag(instruction.cpu, result);
     }
 
     @Opcode(0xAE, 8, "XOR (HL)")
     public static XOR_0xAE(instruction: Instruction): void {
-        const val = instruction.cpu.MMU.read8(instruction.cpu.HL);
+        const val = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
+        const result = instruction.cpu.get("A") ^ val;
 
         instruction.cpu.clearFlags();
-        instruction.cpu.A ^= val;
+        instruction.cpu.set("A", result);
 
-        toggleZeroFlag(instruction.cpu, instruction.cpu.A);
+        toggleZeroFlag(instruction.cpu, result);
     }
 
     @Opcode(0xB0, 4, "OR B")
@@ -795,21 +819,23 @@ export class Opcodes {
     @Opcode(0xB7, 4, "OR A")
     public static OR_0xB0(instruction: Instruction): void {
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
+        const result = instruction.cpu.get("A") | instruction.cpu.get(register);
 
         instruction.cpu.clearFlags();
-        instruction.cpu.A |= instruction.cpu[register];
+        instruction.cpu.set("A", result);
 
-        toggleZeroFlag(instruction.cpu, instruction.cpu.A);
+        toggleZeroFlag(instruction.cpu, result);
     }
 
     @Opcode(0xB6, 8, "OR (HL)")
     public static OR_0xB6(instruction: Instruction): void {
-        const val = instruction.cpu.MMU.read8(instruction.cpu.HL);
+        const val = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
+        const result = instruction.cpu.get("A") | val;
 
         instruction.cpu.clearFlags();
-        instruction.cpu.A |= val;
+        instruction.cpu.set("A", result);
 
-        toggleZeroFlag(instruction.cpu, instruction.cpu.A);
+        toggleZeroFlag(instruction.cpu, result);
     }
 
     @Opcode(0xB8, 4, "CP B")
@@ -820,12 +846,14 @@ export class Opcodes {
     @Opcode(0xBD, 4, "CP L")
     @Opcode(0xBF, 4, "CP A")
     public static CP_0xBB(instruction: Instruction): void {
-        CP(instruction.cpu[instruction.cpu.readByteRegisterType(instruction.opcode)], instruction.cpu);
+        const register = instruction.cpu.readByteRegisterType(instruction.opcode);
+
+        CP(instruction.cpu.get(register), instruction.cpu);
     }
 
     @Opcode(0xBE, 8, "CP (HL)")
     public static CP_0xBE(instruction: Instruction): void {
-        CP(instruction.cpu.MMU.read8(instruction.cpu.HL), instruction.cpu);
+        CP(instruction.cpu.MMU.read8(instruction.cpu.get("HL")), instruction.cpu);
     }
 
     @Opcode(0xC0, 8, "RET NZ")
@@ -854,7 +882,7 @@ export class Opcodes {
         }
 
         if (check) {
-            instruction.cpu.PC = instruction.cpu.popStack();
+            instruction.cpu.set("PC", instruction.cpu.popStack());
             instruction.ticks += 12;
         }
     }
@@ -866,10 +894,10 @@ export class Opcodes {
     public static POP_0xC1(instruction: Instruction): void {
         const register = instruction.cpu.readRegisterType(instruction.opcode >> 4, true);
 
-        instruction.cpu[register] = instruction.cpu.popStack();
+        instruction.cpu.set(register, instruction.cpu.popStack());
 
         if (((instruction.opcode >> 4) & 0x03) == 0x03) {
-            instruction.cpu[register] &= 0xFFF0;
+            instruction.cpu.set(register, instruction.cpu.get(register) & 0xFFF0);
         }
     }
 
@@ -900,7 +928,7 @@ export class Opcodes {
         }
 
         if (check) {
-            instruction.cpu.PC = addr;
+            instruction.cpu.set("PC", addr);
             instruction.ticks += 4;
         }
     }
@@ -909,7 +937,7 @@ export class Opcodes {
     public static JP_0xC3(instruction: Instruction): void {
         const addr = instruction.cpu.readu16();
 
-        instruction.cpu.PC = addr;
+        instruction.cpu.set("PC", addr);
     }
 
     @Opcode(0xC4, 12, "CALL NZ,a16")
@@ -939,8 +967,8 @@ export class Opcodes {
         }
 
         if (check) {
-            instruction.cpu.pushStack(instruction.cpu.PC);
-            instruction.cpu.PC = addr;
+            instruction.cpu.pushStack(instruction.cpu.get("PC"));
+            instruction.cpu.set("PC", addr);
             instruction.ticks += 12;
         }
     }
@@ -952,7 +980,7 @@ export class Opcodes {
     public static PUSH_0xC5(instruction: Instruction): void {
         const register = instruction.cpu.readRegisterType(instruction.opcode >> 4, true);
 
-        instruction.cpu.pushStack(instruction.cpu[register]);
+        instruction.cpu.pushStack(instruction.cpu.get(register));
     }
 
     @Opcode(0xC6, 8, "ADD A,d8")
@@ -962,15 +990,15 @@ export class Opcodes {
 
     @Opcode(0xC9, 16, "RET")
     public static RET_0xC9(instruction: Instruction): void {
-        instruction.cpu.PC = instruction.cpu.popStack();
+        instruction.cpu.set("PC", instruction.cpu.popStack());
     }
 
     @Opcode(0xCD, 24, "CALL a16")
     public static CALL_0xCD(instruction: Instruction): void {
         const addr = instruction.cpu.readu16();
 
-        instruction.cpu.pushStack(instruction.cpu.PC);
-        instruction.cpu.PC = addr;
+        instruction.cpu.pushStack(instruction.cpu.get("PC"));
+        instruction.cpu.set("PC", addr);
     }
 
     @Opcode(0x88, 4, "ADC A,B")
@@ -999,7 +1027,7 @@ export class Opcodes {
             return;
         }
 
-        const registers = {
+        const registers: { [key: string]: RegisterType } = {
             8: "B",
             9: "C",
             10: "D",
@@ -1040,7 +1068,7 @@ export class Opcodes {
                 SUB(number, true, instruction.cpu);
             }
         } else {
-            const registers = {
+            const registers: { [key: string]: RegisterType } = {
                 8: "B",
                 9: "C",
                 10: "D",
@@ -1058,22 +1086,23 @@ export class Opcodes {
     public static LDH_0xE0(instruction: Instruction): void {
         const pos = 0xFF00 + instruction.cpu.readu8();
 
-        instruction.cpu.MMU.write8(pos, instruction.cpu.A);
+        instruction.cpu.MMU.write8(pos, instruction.cpu.get("A"));
     }
 
     @Opcode(0xE2, 8, "LD (C),A")
     public static LD_0xE2(instruction: Instruction): void {
-        instruction.cpu.MMU.write8(0xFF00 + instruction.cpu.C, instruction.cpu.A);
+        instruction.cpu.MMU.write8(0xFF00 + instruction.cpu.get("C"), instruction.cpu.get("A"));
     }
 
     @Opcode(0xE6, 8, "AND d8")
     public static AND_0xE6(instruction: Instruction): void {
         const val = instruction.cpu.readu8();
+        const result = instruction.cpu.get("A") & val;
 
         instruction.cpu.clearFlags();
+        instruction.cpu.set("A", result);
 
-        instruction.cpu.A &= val;
-        toggleZeroFlag(instruction.cpu, instruction.cpu.A);
+        toggleZeroFlag(instruction.cpu, result);
 
         instruction.cpu.enableFlag(Flags.HalfCarryFlag);
     }
@@ -1085,24 +1114,25 @@ export class Opcodes {
 
     @Opcode(0xE9, 4, "JP (HL)")
     public static JP_0xE9(instruction: Instruction): void {
-        instruction.cpu.PC = instruction.cpu.HL;
+        instruction.cpu.set("PC", instruction.cpu.get("HL"));
     }
 
     @Opcode(0xEA, 16, "LD (a16),A")
     public static LD_0xEA(instruction: Instruction): void {
         const addr = instruction.cpu.readu16();
 
-        instruction.cpu.MMU.write8(addr, instruction.cpu.A);
+        instruction.cpu.MMU.write8(addr, instruction.cpu.get("A"));
     }
 
     @Opcode(0xEE, 8, "XOR d8")
     public static XOR_0xEE(instruction: Instruction): void {
         const val = instruction.cpu.readu8();
+        const result = instruction.cpu.get("A") ^ val;
 
         instruction.cpu.clearFlags();
-        instruction.cpu.A ^= val;
+        instruction.cpu.set("A", result);
 
-        toggleZeroFlag(instruction.cpu, instruction.cpu.A);
+        toggleZeroFlag(instruction.cpu, result);
     }
 
     @Opcode(0xC7, 16, "RST 00H")
@@ -1117,13 +1147,13 @@ export class Opcodes {
         const t = ((instruction.opcode >> 3) & 0x07);
         const n = t * 0x08;
 
-        instruction.cpu.pushStack(instruction.cpu.PC);
-        instruction.cpu.PC = n;
+        instruction.cpu.pushStack(instruction.cpu.get("PC"));
+        instruction.cpu.set("PC", n);
     }
 
     @Opcode(0xD9, 16, "RETI")
     public static RETI_0xD9(instruction: Instruction): void {
-        instruction.cpu.PC = instruction.cpu.popStack();
+        instruction.cpu.set("PC", instruction.cpu.popStack());
         instruction.cpu.enableInterrupts = true;
     }
 
@@ -1131,12 +1161,12 @@ export class Opcodes {
     public static LDH_0xF0(instruction: Instruction): void {
         const pos = 0xFF00 + instruction.cpu.readu8();
 
-        instruction.cpu.A = instruction.cpu.MMU.read8(pos);
+        instruction.cpu.set("A", instruction.cpu.MMU.read8(pos));
     }
 
     @Opcode(0xF2, 8, "LD A,(C)")
     public static LD_0xF2(instruction: Instruction): void {
-        instruction.cpu.A = instruction.cpu.MMU.read8(0xFF00 + instruction.cpu.C);
+        instruction.cpu.set("A", instruction.cpu.MMU.read8(0xFF00 + instruction.cpu.get("C")));
     }
 
     @Opcode(0xF3, 4, "DI")
@@ -1147,41 +1177,43 @@ export class Opcodes {
     @Opcode(0xF6, 8, "OR d8")
     public static OR_0xF6(instruction: Instruction): void {
         const val = instruction.cpu.readu8();
+        const result = instruction.cpu.get("A") | val;
 
         instruction.cpu.clearFlags();
-        instruction.cpu.A |= val;
+        instruction.cpu.set("A", result);
 
-        toggleZeroFlag(instruction.cpu, instruction.cpu.A);
+        toggleZeroFlag(instruction.cpu, result);
     }
 
     @Opcode(0xF8, 12, "LD HL,SP+r8")
     public static LD_0xF8(instruction: Instruction): void {
         instruction.cpu.clearFlags();
 
+        const SP = instruction.cpu.get("SP");
         const val = instruction.cpu.reads8();
-        const result = (instruction.cpu.SP + val) & 0xFFFF;
+        const result = (SP + val) & 0xFFFF;
 
-        if (((instruction.cpu.SP ^ val ^ result) & 0x100) == 0x100) {
+        if (((SP ^ val ^ result) & 0x100) == 0x100) {
             instruction.cpu.enableFlag(Flags.CarryFlag);
         }
 
-        if (((instruction.cpu.SP ^ val ^ result) & 0x10) == 0x10) {
+        if (((SP ^ val ^ result) & 0x10) == 0x10) {
             instruction.cpu.enableFlag(Flags.HalfCarryFlag);
         }
         
-        instruction.cpu.HL = result;
+        instruction.cpu.set("HL", result);
     }
 
     @Opcode(0xF9, 8, "LD SP,HL")
     public static LD_0xF9(instruction: Instruction): void {
-        instruction.cpu.SP = instruction.cpu.HL;
+        instruction.cpu.set("SP", instruction.cpu.get("HL"));
     }
 
     @Opcode(0xFA, 16, "LD A,(a16)")
     public static LD_0xFA(instruction: Instruction): void {
         const addr = instruction.cpu.readu16();
 
-        instruction.cpu.A = instruction.cpu.MMU.read8(addr);
+        instruction.cpu.set("A", instruction.cpu.MMU.read8(addr));
     }
 
     @Opcode(0xFB, 4, "EI")
@@ -1212,9 +1244,9 @@ export class OpcodesCB {
         instruction.cpu.disableFlag(Flags.AddSubFlag);
 
         if ((instruction.opcode & 0x7) === 6) {
-            value = instruction.cpu.MMU.read8(instruction.cpu.HL);
+            value = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
         } else {
-            value = instruction.cpu[register];
+            value = instruction.cpu.get(register);
         }
 
         if (value > 0x7F) {
@@ -1227,9 +1259,9 @@ export class OpcodesCB {
         let result = ((value << 1) & 0xFF) | (carry);
 
         if ((instruction.opcode & 0x7) === 6) {
-            instruction.cpu.MMU.write8(instruction.cpu.HL, result);
+            instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
         } else {
-            instruction.cpu[register] = result;
+            instruction.cpu.set(register,  result);
         }
 
         toggleZeroFlag(instruction.cpu, result);
@@ -1250,9 +1282,9 @@ export class OpcodesCB {
         instruction.cpu.clearFlags();
 
         if ((instruction.opcode & 0x7) === 6) {
-            result = instruction.cpu.MMU.read8(instruction.cpu.HL);
+            result = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
         } else {
-            result = instruction.cpu[register];
+            result = instruction.cpu.get(register);
         }
 
         if ((result & 0x01) != 0) {
@@ -1265,9 +1297,9 @@ export class OpcodesCB {
         }
 
         if ((instruction.opcode & 0x7) === 6) {
-            instruction.cpu.MMU.write8(instruction.cpu.HL, result);
+            instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
         } else {
-            instruction.cpu[register] = result;
+            instruction.cpu.set(register, result);
         }
 
         toggleZeroFlag(instruction.cpu, result);
@@ -1286,9 +1318,9 @@ export class OpcodesCB {
         let result = 0;
 
         if ((instruction.opcode & 0x7) === 6) {
-            result = instruction.cpu.MMU.read8(instruction.cpu.HL);
+            result = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
         } else {
-            result = instruction.cpu[register];
+            result = instruction.cpu.get(register);
         }
 
         const carry = instruction.cpu.isFlagSet(Flags.CarryFlag) ? 0x01 : 0x00;
@@ -1303,9 +1335,9 @@ export class OpcodesCB {
         result |= carry;
 
         if ((instruction.opcode & 0x7) === 6) {
-            instruction.cpu.MMU.write8(instruction.cpu.HL, result);
+            instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
         } else {
-            instruction.cpu[register] = result;
+            instruction.cpu.set(register, result);
         }
 
         toggleZeroFlag(instruction.cpu, result);
@@ -1324,9 +1356,9 @@ export class OpcodesCB {
         let result = 0;
 
         if ((instruction.opcode & 0x7) === 6) {
-            result = instruction.cpu.MMU.read8(instruction.cpu.HL);
+            result = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
         } else {
-            result = instruction.cpu[register];
+            result = instruction.cpu.get(register);
         }
 
         const carry = instruction.cpu.isFlagSet(Flags.CarryFlag) ? 0x80 : 0;
@@ -1341,9 +1373,9 @@ export class OpcodesCB {
         result |= carry;
 
         if ((instruction.opcode & 0x7) === 6) {
-            instruction.cpu.MMU.write8(instruction.cpu.HL, result);
+            instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
         } else {
-            instruction.cpu[register] = result;
+            instruction.cpu.set(register, result);
         }
 
         toggleZeroFlag(instruction.cpu, result);
@@ -1362,9 +1394,9 @@ export class OpcodesCB {
         let value = 0;
 
         if ((instruction.opcode & 0x7) === 6) {
-            value = instruction.cpu.MMU.read8(instruction.cpu.HL);
+            value = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
         } else {
-            value = instruction.cpu[register];
+            value = instruction.cpu.get(register);
         }
 
         instruction.cpu.disableFlag(Flags.HalfCarryFlag);
@@ -1379,9 +1411,9 @@ export class OpcodesCB {
         let result = (value << 1) & 0xFF;
 
         if ((instruction.opcode & 0x7) === 6) {
-            instruction.cpu.MMU.write8(instruction.cpu.HL, result);
+            instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
         } else {
-            instruction.cpu[register] = result;
+            instruction.cpu.set(register, result);
         }
 
         toggleZeroFlag(instruction.cpu, result);
@@ -1400,9 +1432,9 @@ export class OpcodesCB {
         let result = 0;
 
         if ((instruction.opcode & 0x7) === 6) {
-            result = instruction.cpu.MMU.read8(instruction.cpu.HL);
+            result = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
         } else {
-            result = instruction.cpu[register];
+            result = instruction.cpu.get(register);
         }
 
         instruction.cpu.clearFlags();
@@ -1419,9 +1451,9 @@ export class OpcodesCB {
         }
 
         if ((instruction.opcode & 0x7) === 6) {
-            instruction.cpu.MMU.write8(instruction.cpu.HL, result);
+            instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
         } else {
-            instruction.cpu[register] = result;
+            instruction.cpu.set(register, result);
         }
 
         toggleZeroFlag(instruction.cpu, result);
@@ -1608,17 +1640,17 @@ export class OpcodesCB {
 
         let result = 0;
         if ((instruction.opcode & 0x7) === 6) {
-            result = instruction.cpu.MMU.read8(instruction.cpu.HL);
+            result = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
         } else {
-            result = instruction.cpu[register];
+            result = instruction.cpu.get(register);
         }
 
         result &= ~(1 << bit);
 
         if ((instruction.opcode & 0x7) === 6) {
-            instruction.cpu.MMU.write8(instruction.cpu.HL, result);
+            instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
         } else {
-            instruction.cpu[register] = result;
+            instruction.cpu.set(register, result);
         }
     }
 
@@ -1692,17 +1724,17 @@ export class OpcodesCB {
 
         let result = 0;
         if ((instruction.opcode & 0x7) === 6) {
-            result = instruction.cpu.MMU.read8(instruction.cpu.HL);
+            result = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
         } else {
-            result = instruction.cpu[register];
+            result = instruction.cpu.get(register);
         }
 
         result |= (1 << bit);
 
         if ((instruction.opcode & 0x7) === 6) {
-            instruction.cpu.MMU.write8(instruction.cpu.HL, result);
+            instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
         } else {
-            instruction.cpu[register] = result;
+            instruction.cpu.set(register, result);
         }
     }
 }

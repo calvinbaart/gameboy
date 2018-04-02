@@ -1,7 +1,9 @@
-import { CPU, RomType } from './cpu';
-import { RomOnlyMemoryController } from './romonly';
-import { MBC1 } from './mbc1';
-import { MBC3 } from './mbc3';
+import { CPU } from '../cpu/cpu';
+import { RomOnlyMemoryController } from './controllers/romonly';
+import { MBC1 } from './controllers/mbc1';
+import { MBC3 } from './controllers/mbc3';
+import { RomType } from '../cpu/romtype';
+import { MBC5 } from './controllers/mbc5';
 
 interface IRegister
 {
@@ -19,10 +21,10 @@ export class Memory
 {
     private _cpu: CPU;
     private _registers: { [key: number]: IRegister };
-    private _controller: MemoryController;
+    private _controller: MemoryController | null;
 
-    private _bios: number[];
-    public _rom: number[];
+    private _bios: number[] | null;
+    private _rom: number[] | null;
     private _biosEnabled: boolean;
 
     private _vram: number[][];
@@ -35,7 +37,7 @@ export class Memory
     private _vramBank: number;
 
     public static save: (memory: Memory, identifier: string, data: string) => void;
-    public static load: (memory: Memory, identifier: string) => string;
+    public static load: (memory: Memory, identifier: string) => string | null;
 
     constructor(cpu: CPU)
     {
@@ -44,6 +46,7 @@ export class Memory
         this._bios = null;
         this._rom = null;
         this._biosEnabled = true;
+        this._type = RomType.UNKNOWN;
         this._wram = [
             Array(0x1000).fill(0xFF),
             Array(0x1000).fill(0xFF),
@@ -63,6 +66,7 @@ export class Memory
         this._ram = Array(0x8000).fill(0xFF);
         this._wramBank = 1;
         this._vramBank = 0;
+        this._controller = null;
 
         this.addRegister(0xFF50, () => 0, (x) => {
             this._biosEnabled = false;
@@ -103,6 +107,15 @@ export class Memory
             case RomType.MBC3TIMERBATTERY:
             case RomType.MBC3TIMERRAMBATTERY:
                 this._controller = new MBC3(this);
+                break;
+            
+            case RomType.MBC5:
+            case RomType.MBC5RAM:
+            case RomType.MBC5RAMBATTERY:
+            case RomType.MBC5RUMBLE:
+            case RomType.MBC5RUMBLERAM:
+            case RomType.MBC5RUMBLERAMBATTERY:
+                this._controller = new MBC5(this);
                 break;
             
             case RomType.UNKNOWN:
@@ -196,11 +209,11 @@ export class Memory
 
     public read8(position: number): number
     {
-        if (position < this._bios.length && this._biosEnabled) {
-            if (position < 0x100 || position >= 0x200) {
+        if (this._bios !== null && this._biosEnabled) {
+            if (position < this._bios.length && (position < 0x100 || position >= 0x200)) {
                 return this._bios[position];
             }
-        }
+        }    
         
         if (this._registers[position] !== undefined) {
             return this._registers[position].read();
@@ -225,18 +238,22 @@ export class Memory
                 }
             
             default:
-                return this._controller.read(position);
+                if (this._controller) {
+                    return this._controller.read(position);
+                } else {
+                    return this.readInternal8(position);
+                }
         }
     }
 
     public write8(position: number, data: number): void
     {
-        if (position < this._bios.length && this._biosEnabled) {
-            if (position < 0x100 || position >= 0x200) {
+        if (this._bios !== null && this._biosEnabled) {
+            if (position < this._bios.length && (position < 0x100 || position >= 0x200)) {
                 this._bios[position] = data & 0xFF;
                 return;
             }
-        }
+        }    
 
         if (this._registers[position] !== undefined) {
             this._registers[position].write(data);
@@ -264,16 +281,18 @@ export class Memory
                 }
 
             default:
-                this._controller.write(position, data & 0xFF);
+                if (this._controller) {
+                    this._controller.write(position, data & 0xFF);
+                } else {
+                    this.writeInternal8(position, data & 0xFF);
+                }
         }
     }
 
     public readInternal8(position: number): number
     {
-        if (position < this._bios.length && this._biosEnabled) {
-            if (position < 0x100 || position >= 0x200) {
-                return this._bios[position];
-            }
+        if (!this._rom || position >= this._rom.length) {
+            return 0xFF;
         }
 
         return this._rom[position];
@@ -281,11 +300,8 @@ export class Memory
 
     public writeInternal8(position: number, data: number): void
     {
-        if (position < this._bios.length && this._biosEnabled) {
-            if (position < 0x100 || position >= 0x200) {
-                this._bios[position] = data & 0xFF;
-                return;
-            }
+        if (!this._rom) {
+            return;
         }
 
         this._rom[position] = data & 0xFF;

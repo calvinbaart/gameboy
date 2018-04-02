@@ -1,4 +1,4 @@
-import { MemoryController, Memory } from "./memory";
+import { MemoryController, Memory } from "../memory";
 
 export class RomOnlyMemoryController implements MemoryController
 {

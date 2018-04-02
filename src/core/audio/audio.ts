@@ -1,4 +1,4 @@
-import { CPU } from "./cpu";
+import { CPU } from "../cpu/cpu";
 
 export enum AudioRegister {
     NR10,

@@ -1,4 +1,5 @@
-import { CPU, Interrupt } from "./cpu";
+import { CPU } from "./cpu";
+import { Interrupt } from "./interrupt";
 
 export class Timer
 {
