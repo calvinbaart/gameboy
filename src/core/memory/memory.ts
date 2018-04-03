@@ -36,6 +36,8 @@ export class Memory
     private _wramBank: number;
     private _vramBank: number;
 
+    private _loaded: boolean;
+
     public static save: (memory: Memory, identifier: string, data: string) => void;
     public static load: (memory: Memory, identifier: string) => string | null;
 
@@ -47,6 +49,7 @@ export class Memory
         this._rom = null;
         this._biosEnabled = true;
         this._type = RomType.UNKNOWN;
+        this._loaded = false;
         this._wram = [
             Array(0x1000).fill(0xFF),
             Array(0x1000).fill(0xFF),
@@ -277,6 +280,7 @@ export class Memory
                     break;
                 } else if (position >= 0xFE00 && position <= 0xFE9F) {
                     this._oamram[position - 0xFE00] = data & 0xFF;
+                    this._cpu.Display.oamWrite(position - 0xFE00, data & 0xFF);
                     break;
                 }
 
@@ -321,6 +325,7 @@ export class Memory
     {
         for (let i = 0; i <= 0x9F; i++) {
             this._oamram[i] = this.read8(position + i);
+            this._cpu.Display.oamWrite(i, this._oamram[i]);
         }
     }
 
@@ -335,6 +340,11 @@ export class Memory
 
     public loadRam(): void
     {
+        if (this._loaded) {
+            return;
+        }
+
+        this._loaded = true;
         const data = Memory.load(this, this._cpu.saveIdentifier);
 
         if (!data) {

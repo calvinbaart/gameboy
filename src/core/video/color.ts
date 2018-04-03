@@ -6,4 +6,5 @@ export interface Color {
 
 export interface ColorPalette {
     color: Color[];
+    colorActual: Color[];
 };

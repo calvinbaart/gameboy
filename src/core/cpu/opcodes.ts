@@ -142,6 +142,8 @@ function SRL(register: RegisterType | null, cpu: CPU): void {
 
     if (register === null) {
         result = cpu.MMU.read8(cpu.get("HL"));
+
+        cpu.cycle(4);
     } else {
         result = cpu.get(register);
     }
@@ -154,11 +156,15 @@ function SRL(register: RegisterType | null, cpu: CPU): void {
 
     if (register === null) {
         cpu.MMU.write8(cpu.get("HL"), result);
+
+        cpu.cycle(4);
     } else {
         cpu.set(register, result);
     }
     
     toggleZeroFlag(cpu, result);
+
+    cpu.cycle(4);
 }
 
 function SWAP(register: RegisterType | null, cpu: CPU): void {
@@ -169,9 +175,14 @@ function SWAP(register: RegisterType | null, cpu: CPU): void {
         const HL = cpu.get("HL");
 
         let value = cpu.MMU.read8(HL);
+        
+        cpu.cycle(4);
+
         result = ((value & 0x0F) << 4) | ((value & 0xF0) >> 4);
 
         cpu.MMU.write8(HL, result);
+
+        cpu.cycle(4);
     } else {
         const reg = cpu.get(register);
 
@@ -180,6 +191,7 @@ function SWAP(register: RegisterType | null, cpu: CPU): void {
     }
 
     toggleZeroFlag(cpu, result);
+    cpu.cycle(4);
 }
 
 function BIT(register: RegisterType | null, bit: number, cpu: CPU): void {
@@ -187,6 +199,8 @@ function BIT(register: RegisterType | null, bit: number, cpu: CPU): void {
     
     if (register === null) {
         value = cpu.MMU.read8(cpu.get("HL"));
+
+        cpu.cycle(4);
     } else {
         value = cpu.get(register);
     }
@@ -194,6 +208,8 @@ function BIT(register: RegisterType | null, bit: number, cpu: CPU): void {
     toggleZeroFlag(cpu, ((value >> bit) & 0x01));
     cpu.enableFlag(Flags.HalfCarryFlag);
     cpu.disableFlag(Flags.AddSubFlag);
+
+    cpu.cycle(4);
 }
 
 function CP(val: number, cpu: CPU): void {
@@ -557,7 +573,7 @@ export class Opcodes {
         instruction.cpu.decrement("HL");
     }
 
-    @Opcode(0x34, 12, "INC (HL)")
+    @Opcode(0x34, 0, "INC (HL)")
     public static INC_0x34(instruction: Instruction): void {
         const register = instruction.cpu.readByteRegisterType(instruction.opcode >> 3);
 
@@ -566,6 +582,8 @@ export class Opcodes {
 
         const HL = instruction.cpu.get("HL");
         let val = (instruction.cpu.MMU.read8(HL) + 1) & 0xFF;
+
+        instruction.cpu.cycle(4);
 
         toggleZeroFlag(instruction.cpu, val);
 
@@ -576,15 +594,20 @@ export class Opcodes {
         }
 
         instruction.cpu.MMU.write8(HL, val);
+
+        instruction.cpu.cycle(4);
+        instruction.cpu.cycle(4);
     }
 
-    @Opcode(0x35, 12, "DEC (HL)")
+    @Opcode(0x35, 0, "DEC (HL)")
     public static DEC_0x35(instruction: Instruction): void {
         instruction.cpu.enableFlag(Flags.AddSubFlag);
         instruction.cpu.disableFlag(Flags.ZeroFlag);
 
         const HL = instruction.cpu.get("HL");
         let val = (instruction.cpu.MMU.read8(HL) - 1) & 0xFF;
+
+        instruction.cpu.cycle(4);
 
         if ((val & 0xF) == 0xF) {
             instruction.cpu.enableFlag(Flags.HalfCarryFlag);
@@ -595,13 +618,21 @@ export class Opcodes {
         toggleZeroFlag(instruction.cpu, val);
 
         instruction.cpu.MMU.write8(HL, val);
+
+        instruction.cpu.cycle(4);
+        instruction.cpu.cycle(4);
     }
 
-    @Opcode(0x36, 12, "LD (HL),d8")
+    @Opcode(0x36, 0, "LD (HL),d8")
     public static LD_0x36(instruction: Instruction): void {
+        instruction.cpu.cycle(4);
+
         const val = instruction.cpu.readu8();
 
         instruction.cpu.MMU.write8(instruction.cpu.get("HL"), val);
+
+        instruction.cpu.cycle(4);
+        instruction.cpu.cycle(4);
     }
 
     @Opcode(0x37, 4, "SCF")
@@ -1082,11 +1113,16 @@ export class Opcodes {
         }
     }
 
-    @Opcode(0xE0, 12, "LDH (a8),A")
+    @Opcode(0xE0, 0, "LDH (a8),A")
     public static LDH_0xE0(instruction: Instruction): void {
+        instruction.cpu.cycle(4);
+
         const pos = 0xFF00 + instruction.cpu.readu8();
 
         instruction.cpu.MMU.write8(pos, instruction.cpu.get("A"));
+
+        instruction.cpu.cycle(4);
+        instruction.cpu.cycle(4);
     }
 
     @Opcode(0xE2, 8, "LD (C),A")
@@ -1117,11 +1153,17 @@ export class Opcodes {
         instruction.cpu.set("PC", instruction.cpu.get("HL"));
     }
 
-    @Opcode(0xEA, 16, "LD (a16),A")
+    @Opcode(0xEA, 0, "LD (a16),A")
     public static LD_0xEA(instruction: Instruction): void {
+        instruction.cpu.cycle(4);
+        instruction.cpu.cycle(4);
+
         const addr = instruction.cpu.readu16();
 
         instruction.cpu.MMU.write8(addr, instruction.cpu.get("A"));
+
+        instruction.cpu.cycle(4);
+        instruction.cpu.cycle(4);
     }
 
     @Opcode(0xEE, 8, "XOR d8")
@@ -1157,11 +1199,16 @@ export class Opcodes {
         instruction.cpu.enableInterrupts = true;
     }
 
-    @Opcode(0xF0, 12, "LDH A,(a8)")
+    @Opcode(0xF0, 0, "LDH A,(a8)")
     public static LDH_0xF0(instruction: Instruction): void {
+        instruction.cpu.cycle(4);
+
         const pos = 0xFF00 + instruction.cpu.readu8();
 
         instruction.cpu.set("A", instruction.cpu.MMU.read8(pos));
+
+        instruction.cpu.cycle(4);
+        instruction.cpu.cycle(4);
     }
 
     @Opcode(0xF2, 8, "LD A,(C)")
@@ -1209,11 +1256,16 @@ export class Opcodes {
         instruction.cpu.set("SP", instruction.cpu.get("HL"));
     }
 
-    @Opcode(0xFA, 16, "LD A,(a16)")
+    @Opcode(0xFA, 0, "LD A,(a16)")
     public static LD_0xFA(instruction: Instruction): void {
-        const addr = instruction.cpu.readu16();
+        instruction.cpu.cycle(4);
+        instruction.cpu.cycle(4);
 
+        const addr = instruction.cpu.readu16();
         instruction.cpu.set("A", instruction.cpu.MMU.read8(addr));
+
+        instruction.cpu.cycle(4);
+        instruction.cpu.cycle(4);
     }
 
     @Opcode(0xFB, 4, "EI")
@@ -1228,15 +1280,17 @@ export class Opcodes {
 }
 
 export class OpcodesCB {
-    @Opcode(0x00, 8, "CB RLC B", OpcodeType.CB)
-    @Opcode(0x01, 8, "CB RLC C", OpcodeType.CB)
-    @Opcode(0x02, 8, "CB RLC D", OpcodeType.CB)
-    @Opcode(0x03, 8, "CB RLC E", OpcodeType.CB)
-    @Opcode(0x04, 8, "CB RLC H", OpcodeType.CB)
-    @Opcode(0x05, 8, "CB RLC L", OpcodeType.CB)
-    @Opcode(0x06, 16, "CB RLC (HL)", OpcodeType.CB)
-    @Opcode(0x07, 8, "CB RLC A", OpcodeType.CB)
+    @Opcode(0x00, 0, "CB RLC B", OpcodeType.CB)
+    @Opcode(0x01, 0, "CB RLC C", OpcodeType.CB)
+    @Opcode(0x02, 0, "CB RLC D", OpcodeType.CB)
+    @Opcode(0x03, 0, "CB RLC E", OpcodeType.CB)
+    @Opcode(0x04, 0, "CB RLC H", OpcodeType.CB)
+    @Opcode(0x05, 0, "CB RLC L", OpcodeType.CB)
+    @Opcode(0x06, 0, "CB RLC (HL)", OpcodeType.CB)
+    @Opcode(0x07, 0, "CB RLC A", OpcodeType.CB)
     public static RLC_0x00(instruction: Instruction): void {
+        instruction.cpu.cycle(4);
+
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
         let value = 0;
 
@@ -1245,6 +1299,8 @@ export class OpcodesCB {
 
         if ((instruction.opcode & 0x7) === 6) {
             value = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
+
+            instruction.cpu.cycle(4);
         } else {
             value = instruction.cpu.get(register);
         }
@@ -1260,22 +1316,27 @@ export class OpcodesCB {
 
         if ((instruction.opcode & 0x7) === 6) {
             instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
+
+            instruction.cpu.cycle(4);
         } else {
             instruction.cpu.set(register,  result);
         }
 
         toggleZeroFlag(instruction.cpu, result);
+        instruction.cpu.cycle(4);
     }
 
-    @Opcode(0x08, 8, "CB RRC B", OpcodeType.CB)
-    @Opcode(0x09, 8, "CB RRC C", OpcodeType.CB)
-    @Opcode(0x0A, 8, "CB RRC D", OpcodeType.CB)
-    @Opcode(0x0B, 8, "CB RRC E", OpcodeType.CB)
-    @Opcode(0x0C, 8, "CB RRC H", OpcodeType.CB)
-    @Opcode(0x0D, 8, "CB RRC L", OpcodeType.CB)
-    @Opcode(0x0E, 16, "CB RRC (HL)", OpcodeType.CB)
-    @Opcode(0x0F, 8, "CB RRC A", OpcodeType.CB)
+    @Opcode(0x08, 0, "CB RRC B", OpcodeType.CB)
+    @Opcode(0x09, 0, "CB RRC C", OpcodeType.CB)
+    @Opcode(0x0A, 0, "CB RRC D", OpcodeType.CB)
+    @Opcode(0x0B, 0, "CB RRC E", OpcodeType.CB)
+    @Opcode(0x0C, 0, "CB RRC H", OpcodeType.CB)
+    @Opcode(0x0D, 0, "CB RRC L", OpcodeType.CB)
+    @Opcode(0x0E, 0, "CB RRC (HL)", OpcodeType.CB)
+    @Opcode(0x0F, 0, "CB RRC A", OpcodeType.CB)
     public static RRC_0x08(instruction: Instruction): void {
+        instruction.cpu.cycle(4);
+
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
         let result = 0;
 
@@ -1283,6 +1344,8 @@ export class OpcodesCB {
 
         if ((instruction.opcode & 0x7) === 6) {
             result = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
+
+            instruction.cpu.cycle(4);
         } else {
             result = instruction.cpu.get(register);
         }
@@ -1298,27 +1361,34 @@ export class OpcodesCB {
 
         if ((instruction.opcode & 0x7) === 6) {
             instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
+
+            instruction.cpu.cycle(4);
         } else {
             instruction.cpu.set(register, result);
         }
 
         toggleZeroFlag(instruction.cpu, result);
+        instruction.cpu.cycle(4);
     }
 
-    @Opcode(0x10, 8, "CB RL B", OpcodeType.CB)
-    @Opcode(0x11, 8, "CB RL C", OpcodeType.CB)
-    @Opcode(0x12, 8, "CB RL D", OpcodeType.CB)
-    @Opcode(0x13, 8, "CB RL E", OpcodeType.CB)
-    @Opcode(0x14, 8, "CB RL H", OpcodeType.CB)
-    @Opcode(0x15, 8, "CB RL L", OpcodeType.CB)
-    @Opcode(0x16, 16, "CB RL (HL)", OpcodeType.CB)
-    @Opcode(0x17, 8, "CB RL A", OpcodeType.CB)
+    @Opcode(0x10, 0, "CB RL B", OpcodeType.CB)
+    @Opcode(0x11, 0, "CB RL C", OpcodeType.CB)
+    @Opcode(0x12, 0, "CB RL D", OpcodeType.CB)
+    @Opcode(0x13, 0, "CB RL E", OpcodeType.CB)
+    @Opcode(0x14, 0, "CB RL H", OpcodeType.CB)
+    @Opcode(0x15, 0, "CB RL L", OpcodeType.CB)
+    @Opcode(0x16, 0, "CB RL (HL)", OpcodeType.CB)
+    @Opcode(0x17, 0, "CB RL A", OpcodeType.CB)
     public static RL_0x11(instruction: Instruction): void {
+        instruction.cpu.cycle(4);
+
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
         let result = 0;
 
         if ((instruction.opcode & 0x7) === 6) {
             result = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
+
+            instruction.cpu.cycle(4);
         } else {
             result = instruction.cpu.get(register);
         }
@@ -1336,27 +1406,34 @@ export class OpcodesCB {
 
         if ((instruction.opcode & 0x7) === 6) {
             instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
+
+            instruction.cpu.cycle(4);
         } else {
             instruction.cpu.set(register, result);
         }
 
         toggleZeroFlag(instruction.cpu, result);
+        instruction.cpu.cycle(4);
     }
 
-    @Opcode(0x18, 8, "CB RR B", OpcodeType.CB)
-    @Opcode(0x19, 8, "CB RR C", OpcodeType.CB)
-    @Opcode(0x1A, 8, "CB RR D", OpcodeType.CB)
-    @Opcode(0x1B, 8, "CB RR E", OpcodeType.CB)
-    @Opcode(0x1C, 8, "CB RR H", OpcodeType.CB)
-    @Opcode(0x1D, 8, "CB RR L", OpcodeType.CB)
-    @Opcode(0x1E, 16, "CB RR (HL)", OpcodeType.CB)
-    @Opcode(0x1F, 8, "CB RR A", OpcodeType.CB)
+    @Opcode(0x18, 0, "CB RR B", OpcodeType.CB)
+    @Opcode(0x19, 0, "CB RR C", OpcodeType.CB)
+    @Opcode(0x1A, 0, "CB RR D", OpcodeType.CB)
+    @Opcode(0x1B, 0, "CB RR E", OpcodeType.CB)
+    @Opcode(0x1C, 0, "CB RR H", OpcodeType.CB)
+    @Opcode(0x1D, 0, "CB RR L", OpcodeType.CB)
+    @Opcode(0x1E, 0, "CB RR (HL)", OpcodeType.CB)
+    @Opcode(0x1F, 0, "CB RR A", OpcodeType.CB)
     public static RR_0x19(instruction: Instruction): void {
+        instruction.cpu.cycle(4);
+
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
         let result = 0;
 
         if ((instruction.opcode & 0x7) === 6) {
             result = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
+
+            instruction.cpu.cycle(4);
         } else {
             result = instruction.cpu.get(register);
         }
@@ -1374,27 +1451,34 @@ export class OpcodesCB {
 
         if ((instruction.opcode & 0x7) === 6) {
             instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
+
+            instruction.cpu.cycle(4);
         } else {
             instruction.cpu.set(register, result);
         }
 
         toggleZeroFlag(instruction.cpu, result);
+        instruction.cpu.cycle(4);
     }
 
-    @Opcode(0x20, 8, "CB SLA B", OpcodeType.CB)
-    @Opcode(0x21, 8, "CB SLA C", OpcodeType.CB)
-    @Opcode(0x22, 8, "CB SLA D", OpcodeType.CB)
-    @Opcode(0x23, 8, "CB SLA E", OpcodeType.CB)
-    @Opcode(0x24, 8, "CB SLA H", OpcodeType.CB)
-    @Opcode(0x25, 8, "CB SLA L", OpcodeType.CB)
-    @Opcode(0x26, 16, "CB SLA (HL)", OpcodeType.CB)
-    @Opcode(0x27, 8, "CB SLA A", OpcodeType.CB)
+    @Opcode(0x20, 0, "CB SLA B", OpcodeType.CB)
+    @Opcode(0x21, 0, "CB SLA C", OpcodeType.CB)
+    @Opcode(0x22, 0, "CB SLA D", OpcodeType.CB)
+    @Opcode(0x23, 0, "CB SLA E", OpcodeType.CB)
+    @Opcode(0x24, 0, "CB SLA H", OpcodeType.CB)
+    @Opcode(0x25, 0, "CB SLA L", OpcodeType.CB)
+    @Opcode(0x26, 0, "CB SLA (HL)", OpcodeType.CB)
+    @Opcode(0x27, 0, "CB SLA A", OpcodeType.CB)
     public static SLA_0x20(instruction: Instruction): void {
+        instruction.cpu.cycle(4);
+
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
         let value = 0;
 
         if ((instruction.opcode & 0x7) === 6) {
             value = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
+
+            instruction.cpu.cycle(4);
         } else {
             value = instruction.cpu.get(register);
         }
@@ -1412,27 +1496,34 @@ export class OpcodesCB {
 
         if ((instruction.opcode & 0x7) === 6) {
             instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
+
+            instruction.cpu.cycle(4);
         } else {
             instruction.cpu.set(register, result);
         }
 
         toggleZeroFlag(instruction.cpu, result);
+        instruction.cpu.cycle(4);
     }
 
-    @Opcode(0x28, 8, "CB SRA B", OpcodeType.CB)
-    @Opcode(0x29, 8, "CB SRA C", OpcodeType.CB)
-    @Opcode(0x2A, 8, "CB SRA D", OpcodeType.CB)
-    @Opcode(0x2B, 8, "CB SRA E", OpcodeType.CB)
-    @Opcode(0x2C, 8, "CB SRA H", OpcodeType.CB)
-    @Opcode(0x2D, 8, "CB SRA L", OpcodeType.CB)
-    @Opcode(0x2E, 16, "CB SRA (HL)", OpcodeType.CB)
-    @Opcode(0x2F, 8, "CB SRA A", OpcodeType.CB)
+    @Opcode(0x28, 0, "CB SRA B", OpcodeType.CB)
+    @Opcode(0x29, 0, "CB SRA C", OpcodeType.CB)
+    @Opcode(0x2A, 0, "CB SRA D", OpcodeType.CB)
+    @Opcode(0x2B, 0, "CB SRA E", OpcodeType.CB)
+    @Opcode(0x2C, 0, "CB SRA H", OpcodeType.CB)
+    @Opcode(0x2D, 0, "CB SRA L", OpcodeType.CB)
+    @Opcode(0x2E, 0, "CB SRA (HL)", OpcodeType.CB)
+    @Opcode(0x2F, 0, "CB SRA A", OpcodeType.CB)
     public static SRA_0x28(instruction: Instruction): void {
+        instruction.cpu.cycle(4);
+
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
         let result = 0;
 
         if ((instruction.opcode & 0x7) === 6) {
             result = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
+
+            instruction.cpu.cycle(4);
         } else {
             result = instruction.cpu.get(register);
         }
@@ -1452,22 +1543,27 @@ export class OpcodesCB {
 
         if ((instruction.opcode & 0x7) === 6) {
             instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
+
+            instruction.cpu.cycle(4);
         } else {
             instruction.cpu.set(register, result);
         }
 
         toggleZeroFlag(instruction.cpu, result);
+        instruction.cpu.cycle(4);
     }
 
-    @Opcode(0x30, 8, "CB SWAP B", OpcodeType.CB)
-    @Opcode(0x31, 8, "CB SWAP C", OpcodeType.CB)
-    @Opcode(0x32, 8, "CB SWAP D", OpcodeType.CB)
-    @Opcode(0x33, 8, "CB SWAP E", OpcodeType.CB)
-    @Opcode(0x34, 8, "CB SWAP H", OpcodeType.CB)
-    @Opcode(0x35, 8, "CB SWAP L", OpcodeType.CB)
-    @Opcode(0x36, 16, "CB SWAP (HL)", OpcodeType.CB)
-    @Opcode(0x37, 8, "CB SWAP A", OpcodeType.CB)
+    @Opcode(0x30, 0, "CB SWAP B", OpcodeType.CB)
+    @Opcode(0x31, 0, "CB SWAP C", OpcodeType.CB)
+    @Opcode(0x32, 0, "CB SWAP D", OpcodeType.CB)
+    @Opcode(0x33, 0, "CB SWAP E", OpcodeType.CB)
+    @Opcode(0x34, 0, "CB SWAP H", OpcodeType.CB)
+    @Opcode(0x35, 0, "CB SWAP L", OpcodeType.CB)
+    @Opcode(0x36, 0, "CB SWAP (HL)", OpcodeType.CB)
+    @Opcode(0x37, 0, "CB SWAP A", OpcodeType.CB)
     public static SWAP_0x37(instruction: Instruction): void {
+        instruction.cpu.cycle(4);
+
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
 
         if ((instruction.opcode & 0x7) === 6) {
@@ -1477,15 +1573,17 @@ export class OpcodesCB {
         }
     }
 
-    @Opcode(0x38, 8, "CB SRL B", OpcodeType.CB)
-    @Opcode(0x39, 8, "CB SRL C", OpcodeType.CB)
-    @Opcode(0x3A, 8, "CB SRL D", OpcodeType.CB)
-    @Opcode(0x3B, 8, "CB SRL E", OpcodeType.CB)
-    @Opcode(0x3C, 8, "CB SRL H", OpcodeType.CB)
-    @Opcode(0x3D, 8, "CB SRL L", OpcodeType.CB)
-    @Opcode(0x3E, 16, "CB SRL (HL)", OpcodeType.CB)
-    @Opcode(0x3F, 8, "CB SRL A", OpcodeType.CB)
+    @Opcode(0x38, 0, "CB SRL B", OpcodeType.CB)
+    @Opcode(0x39, 0, "CB SRL C", OpcodeType.CB)
+    @Opcode(0x3A, 0, "CB SRL D", OpcodeType.CB)
+    @Opcode(0x3B, 0, "CB SRL E", OpcodeType.CB)
+    @Opcode(0x3C, 0, "CB SRL H", OpcodeType.CB)
+    @Opcode(0x3D, 0, "CB SRL L", OpcodeType.CB)
+    @Opcode(0x3E, 0, "CB SRL (HL)", OpcodeType.CB)
+    @Opcode(0x3F, 0, "CB SRL A", OpcodeType.CB)
     public static SRL_0x38(instruction: Instruction): void {
+        instruction.cpu.cycle(4);
+
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
 
         if ((instruction.opcode & 0x7) === 6) {
@@ -1495,71 +1593,73 @@ export class OpcodesCB {
         }
     }
 
-    @Opcode(0x40, 8, "CB BIT 0,B", OpcodeType.CB)
-    @Opcode(0x41, 8, "CB BIT 0,C", OpcodeType.CB)
-    @Opcode(0x42, 8, "CB BIT 0,D", OpcodeType.CB)
-    @Opcode(0x43, 8, "CB BIT 0,E", OpcodeType.CB)
-    @Opcode(0x44, 8, "CB BIT 0,H", OpcodeType.CB)
-    @Opcode(0x45, 8, "CB BIT 0,L", OpcodeType.CB)
-    @Opcode(0x46, 12, "CB BIT 0,(HL)", OpcodeType.CB)
-    @Opcode(0x47, 8, "CB BIT 0,A", OpcodeType.CB)
-    @Opcode(0x48, 8, "CB BIT 1,B", OpcodeType.CB)
-    @Opcode(0x49, 8, "CB BIT 1,C", OpcodeType.CB)
-    @Opcode(0x4A, 8, "CB BIT 1,D", OpcodeType.CB)
-    @Opcode(0x4B, 8, "CB BIT 1,E", OpcodeType.CB)
-    @Opcode(0x4C, 8, "CB BIT 1,H", OpcodeType.CB)
-    @Opcode(0x4D, 8, "CB BIT 1,L", OpcodeType.CB)
-    @Opcode(0x4E, 12, "CB BIT 1,(HL)", OpcodeType.CB)
-    @Opcode(0x4F, 8, "CB BIT 1,A", OpcodeType.CB)
-    @Opcode(0x50, 8, "CB BIT 2,B", OpcodeType.CB)
-    @Opcode(0x51, 8, "CB BIT 2,C", OpcodeType.CB)
-    @Opcode(0x52, 8, "CB BIT 2,D", OpcodeType.CB)
-    @Opcode(0x53, 8, "CB BIT 2,E", OpcodeType.CB)
-    @Opcode(0x54, 8, "CB BIT 2,H", OpcodeType.CB)
-    @Opcode(0x55, 8, "CB BIT 2,L", OpcodeType.CB)
-    @Opcode(0x56, 12, "CB BIT 2,(HL)", OpcodeType.CB)
-    @Opcode(0x57, 8, "CB BIT 2,A", OpcodeType.CB)
-    @Opcode(0x58, 8, "CB BIT 3,B", OpcodeType.CB)
-    @Opcode(0x59, 8, "CB BIT 3,C", OpcodeType.CB)
-    @Opcode(0x5A, 8, "CB BIT 3,D", OpcodeType.CB)
-    @Opcode(0x5B, 8, "CB BIT 3,E", OpcodeType.CB)
-    @Opcode(0x5C, 8, "CB BIT 3,H", OpcodeType.CB)
-    @Opcode(0x5D, 8, "CB BIT 3,L", OpcodeType.CB)
-    @Opcode(0x5E, 12, "CB BIT 3,(HL)", OpcodeType.CB)
-    @Opcode(0x5F, 8, "CB BIT 3,A", OpcodeType.CB)
-    @Opcode(0x60, 8, "CB BIT 4,B", OpcodeType.CB)
-    @Opcode(0x61, 8, "CB BIT 4,C", OpcodeType.CB)
-    @Opcode(0x62, 8, "CB BIT 4,D", OpcodeType.CB)
-    @Opcode(0x63, 8, "CB BIT 4,E", OpcodeType.CB)
-    @Opcode(0x64, 8, "CB BIT 4,H", OpcodeType.CB)
-    @Opcode(0x65, 8, "CB BIT 4,L", OpcodeType.CB)
-    @Opcode(0x66, 12, "CB BIT 4,(HL)", OpcodeType.CB)
-    @Opcode(0x67, 8, "CB BIT 4,A", OpcodeType.CB)
-    @Opcode(0x68, 8, "CB BIT 5,B", OpcodeType.CB)
-    @Opcode(0x69, 8, "CB BIT 5,C", OpcodeType.CB)
-    @Opcode(0x6A, 8, "CB BIT 5,D", OpcodeType.CB)
-    @Opcode(0x6B, 8, "CB BIT 5,E", OpcodeType.CB)
-    @Opcode(0x6C, 8, "CB BIT 5,H", OpcodeType.CB)
-    @Opcode(0x6D, 8, "CB BIT 5,L", OpcodeType.CB)
-    @Opcode(0x6E, 12, "CB BIT 5,(HL)", OpcodeType.CB)
-    @Opcode(0x6F, 8, "CB BIT 5,A", OpcodeType.CB)
-    @Opcode(0x70, 8, "CB BIT 6,B", OpcodeType.CB)
-    @Opcode(0x71, 8, "CB BIT 6,C", OpcodeType.CB)
-    @Opcode(0x72, 8, "CB BIT 6,D", OpcodeType.CB)
-    @Opcode(0x73, 8, "CB BIT 6,E", OpcodeType.CB)
-    @Opcode(0x74, 8, "CB BIT 6,H", OpcodeType.CB)
-    @Opcode(0x75, 8, "CB BIT 6,L", OpcodeType.CB)
-    @Opcode(0x76, 12, "CB BIT 6,(HL)", OpcodeType.CB)
-    @Opcode(0x77, 8, "CB BIT 6,A", OpcodeType.CB)
-    @Opcode(0x78, 8, "CB BIT 7,B", OpcodeType.CB)
-    @Opcode(0x79, 8, "CB BIT 7,C", OpcodeType.CB)
-    @Opcode(0x7A, 8, "CB BIT 7,D", OpcodeType.CB)
-    @Opcode(0x7B, 8, "CB BIT 7,E", OpcodeType.CB)
-    @Opcode(0x7C, 8, "CB BIT 7,H", OpcodeType.CB)
-    @Opcode(0x7D, 8, "CB BIT 7,L", OpcodeType.CB)
-    @Opcode(0x7E, 12, "CB BIT 7,(HL)", OpcodeType.CB)
-    @Opcode(0x7F, 8, "CB BIT 7,A", OpcodeType.CB)
+    @Opcode(0x40, 0, "CB BIT 0,B", OpcodeType.CB)
+    @Opcode(0x41, 0, "CB BIT 0,C", OpcodeType.CB)
+    @Opcode(0x42, 0, "CB BIT 0,D", OpcodeType.CB)
+    @Opcode(0x43, 0, "CB BIT 0,E", OpcodeType.CB)
+    @Opcode(0x44, 0, "CB BIT 0,H", OpcodeType.CB)
+    @Opcode(0x45, 0, "CB BIT 0,L", OpcodeType.CB)
+    @Opcode(0x46, 0, "CB BIT 0,(HL)", OpcodeType.CB)
+    @Opcode(0x47, 0, "CB BIT 0,A", OpcodeType.CB)
+    @Opcode(0x48, 0, "CB BIT 1,B", OpcodeType.CB)
+    @Opcode(0x49, 0, "CB BIT 1,C", OpcodeType.CB)
+    @Opcode(0x4A, 0, "CB BIT 1,D", OpcodeType.CB)
+    @Opcode(0x4B, 0, "CB BIT 1,E", OpcodeType.CB)
+    @Opcode(0x4C, 0, "CB BIT 1,H", OpcodeType.CB)
+    @Opcode(0x4D, 0, "CB BIT 1,L", OpcodeType.CB)
+    @Opcode(0x4E, 0, "CB BIT 1,(HL)", OpcodeType.CB)
+    @Opcode(0x4F, 0, "CB BIT 1,A", OpcodeType.CB)
+    @Opcode(0x50, 0, "CB BIT 2,B", OpcodeType.CB)
+    @Opcode(0x51, 0, "CB BIT 2,C", OpcodeType.CB)
+    @Opcode(0x52, 0, "CB BIT 2,D", OpcodeType.CB)
+    @Opcode(0x53, 0, "CB BIT 2,E", OpcodeType.CB)
+    @Opcode(0x54, 0, "CB BIT 2,H", OpcodeType.CB)
+    @Opcode(0x55, 0, "CB BIT 2,L", OpcodeType.CB)
+    @Opcode(0x56, 0, "CB BIT 2,(HL)", OpcodeType.CB)
+    @Opcode(0x57, 0, "CB BIT 2,A", OpcodeType.CB)
+    @Opcode(0x58, 0, "CB BIT 3,B", OpcodeType.CB)
+    @Opcode(0x59, 0, "CB BIT 3,C", OpcodeType.CB)
+    @Opcode(0x5A, 0, "CB BIT 3,D", OpcodeType.CB)
+    @Opcode(0x5B, 0, "CB BIT 3,E", OpcodeType.CB)
+    @Opcode(0x5C, 0, "CB BIT 3,H", OpcodeType.CB)
+    @Opcode(0x5D, 0, "CB BIT 3,L", OpcodeType.CB)
+    @Opcode(0x5E, 0, "CB BIT 3,(HL)", OpcodeType.CB)
+    @Opcode(0x5F, 0, "CB BIT 3,A", OpcodeType.CB)
+    @Opcode(0x60, 0, "CB BIT 4,B", OpcodeType.CB)
+    @Opcode(0x61, 0, "CB BIT 4,C", OpcodeType.CB)
+    @Opcode(0x62, 0, "CB BIT 4,D", OpcodeType.CB)
+    @Opcode(0x63, 0, "CB BIT 4,E", OpcodeType.CB)
+    @Opcode(0x64, 0, "CB BIT 4,H", OpcodeType.CB)
+    @Opcode(0x65, 0, "CB BIT 4,L", OpcodeType.CB)
+    @Opcode(0x66, 0, "CB BIT 4,(HL)", OpcodeType.CB)
+    @Opcode(0x67, 0, "CB BIT 4,A", OpcodeType.CB)
+    @Opcode(0x68, 0, "CB BIT 5,B", OpcodeType.CB)
+    @Opcode(0x69, 0, "CB BIT 5,C", OpcodeType.CB)
+    @Opcode(0x6A, 0, "CB BIT 5,D", OpcodeType.CB)
+    @Opcode(0x6B, 0, "CB BIT 5,E", OpcodeType.CB)
+    @Opcode(0x6C, 0, "CB BIT 5,H", OpcodeType.CB)
+    @Opcode(0x6D, 0, "CB BIT 5,L", OpcodeType.CB)
+    @Opcode(0x6E, 0, "CB BIT 5,(HL)", OpcodeType.CB)
+    @Opcode(0x6F, 0, "CB BIT 5,A", OpcodeType.CB)
+    @Opcode(0x70, 0, "CB BIT 6,B", OpcodeType.CB)
+    @Opcode(0x71, 0, "CB BIT 6,C", OpcodeType.CB)
+    @Opcode(0x72, 0, "CB BIT 6,D", OpcodeType.CB)
+    @Opcode(0x73, 0, "CB BIT 6,E", OpcodeType.CB)
+    @Opcode(0x74, 0, "CB BIT 6,H", OpcodeType.CB)
+    @Opcode(0x75, 0, "CB BIT 6,L", OpcodeType.CB)
+    @Opcode(0x76, 0, "CB BIT 6,(HL)", OpcodeType.CB)
+    @Opcode(0x77, 0, "CB BIT 6,A", OpcodeType.CB)
+    @Opcode(0x78, 0, "CB BIT 7,B", OpcodeType.CB)
+    @Opcode(0x79, 0, "CB BIT 7,C", OpcodeType.CB)
+    @Opcode(0x7A, 0, "CB BIT 7,D", OpcodeType.CB)
+    @Opcode(0x7B, 0, "CB BIT 7,E", OpcodeType.CB)
+    @Opcode(0x7C, 0, "CB BIT 7,H", OpcodeType.CB)
+    @Opcode(0x7D, 0, "CB BIT 7,L", OpcodeType.CB)
+    @Opcode(0x7E, 0, "CB BIT 7,(HL)", OpcodeType.CB)
+    @Opcode(0x7F, 0, "CB BIT 7,A", OpcodeType.CB)
     public static BIT_0x7C(instruction: Instruction): void {
+        instruction.cpu.cycle(4);
+
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
         const bit = (instruction.opcode & 0b00111000) >> 3;
 
@@ -1570,77 +1670,81 @@ export class OpcodesCB {
         }
     }
 
-    @Opcode(0x80, 8, "CB RES 0,B", OpcodeType.CB)
-    @Opcode(0x81, 8, "CB RES 0,C", OpcodeType.CB)
-    @Opcode(0x82, 8, "CB RES 0,D", OpcodeType.CB)
-    @Opcode(0x83, 8, "CB RES 0,E", OpcodeType.CB)
-    @Opcode(0x84, 8, "CB RES 0,H", OpcodeType.CB)
-    @Opcode(0x85, 8, "CB RES 0,L", OpcodeType.CB)
-    @Opcode(0x86, 16, "CB RES 0,(HL)", OpcodeType.CB)
-    @Opcode(0x87, 8, "CB RES 0,A", OpcodeType.CB)
-    @Opcode(0x88, 8, "CB RES 1,B", OpcodeType.CB)
-    @Opcode(0x89, 8, "CB RES 1,C", OpcodeType.CB)
-    @Opcode(0x8A, 8, "CB RES 1,D", OpcodeType.CB)
-    @Opcode(0x8B, 8, "CB RES 1,E", OpcodeType.CB)
-    @Opcode(0x8C, 8, "CB RES 1,H", OpcodeType.CB)
-    @Opcode(0x8D, 8, "CB RES 1,L", OpcodeType.CB)
-    @Opcode(0x8E, 16, "CB RES 1,(HL)", OpcodeType.CB)
-    @Opcode(0x8F, 8, "CB RES 1,A", OpcodeType.CB)
-    @Opcode(0x90, 8, "CB RES 2,B", OpcodeType.CB)
-    @Opcode(0x91, 8, "CB RES 2,C", OpcodeType.CB)
-    @Opcode(0x92, 8, "CB RES 2,D", OpcodeType.CB)
-    @Opcode(0x93, 8, "CB RES 2,E", OpcodeType.CB)
-    @Opcode(0x94, 8, "CB RES 2,H", OpcodeType.CB)
-    @Opcode(0x95, 8, "CB RES 2,L", OpcodeType.CB)
-    @Opcode(0x96, 16, "CB RES 2,(HL)", OpcodeType.CB)
-    @Opcode(0x97, 8, "CB RES 2,A", OpcodeType.CB)
-    @Opcode(0x98, 8, "CB RES 3,B", OpcodeType.CB)
-    @Opcode(0x99, 8, "CB RES 3,C", OpcodeType.CB)
-    @Opcode(0x9A, 8, "CB RES 3,D", OpcodeType.CB)
-    @Opcode(0x9B, 8, "CB RES 3,E", OpcodeType.CB)
-    @Opcode(0x9C, 8, "CB RES 3,H", OpcodeType.CB)
-    @Opcode(0x9D, 8, "CB RES 3,L", OpcodeType.CB)
-    @Opcode(0x9E, 16, "CB RES 3,(HL)", OpcodeType.CB)
-    @Opcode(0x9F, 8, "CB RES 3,A", OpcodeType.CB)
-    @Opcode(0xA0, 8, "CB RES 4,B", OpcodeType.CB)
-    @Opcode(0xA1, 8, "CB RES 4,C", OpcodeType.CB)
-    @Opcode(0xA2, 8, "CB RES 4,D", OpcodeType.CB)
-    @Opcode(0xA3, 8, "CB RES 4,E", OpcodeType.CB)
-    @Opcode(0xA4, 8, "CB RES 4,H", OpcodeType.CB)
-    @Opcode(0xA5, 8, "CB RES 4,L", OpcodeType.CB)
-    @Opcode(0xA6, 16, "CB RES 4,(HL)", OpcodeType.CB)
-    @Opcode(0xA7, 8, "CB RES 4,A", OpcodeType.CB)
-    @Opcode(0xA8, 8, "CB RES 5,B", OpcodeType.CB)
-    @Opcode(0xA9, 8, "CB RES 5,C", OpcodeType.CB)
-    @Opcode(0xAA, 8, "CB RES 5,D", OpcodeType.CB)
-    @Opcode(0xAB, 8, "CB RES 5,E", OpcodeType.CB)
-    @Opcode(0xAC, 8, "CB RES 5,H", OpcodeType.CB)
-    @Opcode(0xAD, 8, "CB RES 5,L", OpcodeType.CB)
-    @Opcode(0xAE, 16, "CB RES 5,(HL)", OpcodeType.CB)
-    @Opcode(0xAF, 8, "CB RES 5,A", OpcodeType.CB)
-    @Opcode(0xB0, 8, "CB RES 6,B", OpcodeType.CB)
-    @Opcode(0xB1, 8, "CB RES 6,C", OpcodeType.CB)
-    @Opcode(0xB2, 8, "CB RES 6,D", OpcodeType.CB)
-    @Opcode(0xB3, 8, "CB RES 6,E", OpcodeType.CB)
-    @Opcode(0xB4, 8, "CB RES 6,H", OpcodeType.CB)
-    @Opcode(0xB5, 8, "CB RES 6,L", OpcodeType.CB)
-    @Opcode(0xB6, 16, "CB RES 6,(HL)", OpcodeType.CB)
-    @Opcode(0xB7, 8, "CB RES 6,A", OpcodeType.CB)
-    @Opcode(0xB8, 8, "CB RES 7,B", OpcodeType.CB)
-    @Opcode(0xB9, 8, "CB RES 7,C", OpcodeType.CB)
-    @Opcode(0xBA, 8, "CB RES 7,D", OpcodeType.CB)
-    @Opcode(0xBB, 8, "CB RES 7,E", OpcodeType.CB)
-    @Opcode(0xBC, 8, "CB RES 7,H", OpcodeType.CB)
-    @Opcode(0xBD, 8, "CB RES 7,L", OpcodeType.CB)
-    @Opcode(0xBE, 16, "CB RES 7,(HL)", OpcodeType.CB)
-    @Opcode(0xBF, 8, "CB RES 7,A", OpcodeType.CB)
+    @Opcode(0x80, 0, "CB RES 0,B", OpcodeType.CB)
+    @Opcode(0x81, 0, "CB RES 0,C", OpcodeType.CB)
+    @Opcode(0x82, 0, "CB RES 0,D", OpcodeType.CB)
+    @Opcode(0x83, 0, "CB RES 0,E", OpcodeType.CB)
+    @Opcode(0x84, 0, "CB RES 0,H", OpcodeType.CB)
+    @Opcode(0x85, 0, "CB RES 0,L", OpcodeType.CB)
+    @Opcode(0x86, 0, "CB RES 0,(HL)", OpcodeType.CB)
+    @Opcode(0x87, 0, "CB RES 0,A", OpcodeType.CB)
+    @Opcode(0x88, 0, "CB RES 1,B", OpcodeType.CB)
+    @Opcode(0x89, 0, "CB RES 1,C", OpcodeType.CB)
+    @Opcode(0x8A, 0, "CB RES 1,D", OpcodeType.CB)
+    @Opcode(0x8B, 0, "CB RES 1,E", OpcodeType.CB)
+    @Opcode(0x8C, 0, "CB RES 1,H", OpcodeType.CB)
+    @Opcode(0x8D, 0, "CB RES 1,L", OpcodeType.CB)
+    @Opcode(0x8E, 0, "CB RES 1,(HL)", OpcodeType.CB)
+    @Opcode(0x8F, 0, "CB RES 1,A", OpcodeType.CB)
+    @Opcode(0x90, 0, "CB RES 2,B", OpcodeType.CB)
+    @Opcode(0x91, 0, "CB RES 2,C", OpcodeType.CB)
+    @Opcode(0x92, 0, "CB RES 2,D", OpcodeType.CB)
+    @Opcode(0x93, 0, "CB RES 2,E", OpcodeType.CB)
+    @Opcode(0x94, 0, "CB RES 2,H", OpcodeType.CB)
+    @Opcode(0x95, 0, "CB RES 2,L", OpcodeType.CB)
+    @Opcode(0x96, 0, "CB RES 2,(HL)", OpcodeType.CB)
+    @Opcode(0x97, 0, "CB RES 2,A", OpcodeType.CB)
+    @Opcode(0x98, 0, "CB RES 3,B", OpcodeType.CB)
+    @Opcode(0x99, 0, "CB RES 3,C", OpcodeType.CB)
+    @Opcode(0x9A, 0, "CB RES 3,D", OpcodeType.CB)
+    @Opcode(0x9B, 0, "CB RES 3,E", OpcodeType.CB)
+    @Opcode(0x9C, 0, "CB RES 3,H", OpcodeType.CB)
+    @Opcode(0x9D, 0, "CB RES 3,L", OpcodeType.CB)
+    @Opcode(0x9E, 0, "CB RES 3,(HL)", OpcodeType.CB)
+    @Opcode(0x9F, 0, "CB RES 3,A", OpcodeType.CB)
+    @Opcode(0xA0, 0, "CB RES 4,B", OpcodeType.CB)
+    @Opcode(0xA1, 0, "CB RES 4,C", OpcodeType.CB)
+    @Opcode(0xA2, 0, "CB RES 4,D", OpcodeType.CB)
+    @Opcode(0xA3, 0, "CB RES 4,E", OpcodeType.CB)
+    @Opcode(0xA4, 0, "CB RES 4,H", OpcodeType.CB)
+    @Opcode(0xA5, 0, "CB RES 4,L", OpcodeType.CB)
+    @Opcode(0xA6, 0, "CB RES 4,(HL)", OpcodeType.CB)
+    @Opcode(0xA7, 0, "CB RES 4,A", OpcodeType.CB)
+    @Opcode(0xA8, 0, "CB RES 5,B", OpcodeType.CB)
+    @Opcode(0xA9, 0, "CB RES 5,C", OpcodeType.CB)
+    @Opcode(0xAA, 0, "CB RES 5,D", OpcodeType.CB)
+    @Opcode(0xAB, 0, "CB RES 5,E", OpcodeType.CB)
+    @Opcode(0xAC, 0, "CB RES 5,H", OpcodeType.CB)
+    @Opcode(0xAD, 0, "CB RES 5,L", OpcodeType.CB)
+    @Opcode(0xAE, 0, "CB RES 5,(HL)", OpcodeType.CB)
+    @Opcode(0xAF, 0, "CB RES 5,A", OpcodeType.CB)
+    @Opcode(0xB0, 0, "CB RES 6,B", OpcodeType.CB)
+    @Opcode(0xB1, 0, "CB RES 6,C", OpcodeType.CB)
+    @Opcode(0xB2, 0, "CB RES 6,D", OpcodeType.CB)
+    @Opcode(0xB3, 0, "CB RES 6,E", OpcodeType.CB)
+    @Opcode(0xB4, 0, "CB RES 6,H", OpcodeType.CB)
+    @Opcode(0xB5, 0, "CB RES 6,L", OpcodeType.CB)
+    @Opcode(0xB6, 0, "CB RES 6,(HL)", OpcodeType.CB)
+    @Opcode(0xB7, 0, "CB RES 6,A", OpcodeType.CB)
+    @Opcode(0xB8, 0, "CB RES 7,B", OpcodeType.CB)
+    @Opcode(0xB9, 0, "CB RES 7,C", OpcodeType.CB)
+    @Opcode(0xBA, 0, "CB RES 7,D", OpcodeType.CB)
+    @Opcode(0xBB, 0, "CB RES 7,E", OpcodeType.CB)
+    @Opcode(0xBC, 0, "CB RES 7,H", OpcodeType.CB)
+    @Opcode(0xBD, 0, "CB RES 7,L", OpcodeType.CB)
+    @Opcode(0xBE, 0, "CB RES 7,(HL)", OpcodeType.CB)
+    @Opcode(0xBF, 0, "CB RES 7,A", OpcodeType.CB)
     public static RES_0x87(instruction: Instruction): void {
+        instruction.cpu.cycle(4);
+
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
         const bit = (instruction.opcode & 0b00111000) >> 3;
 
         let result = 0;
         if ((instruction.opcode & 0x7) === 6) {
             result = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
+
+            instruction.cpu.cycle(4);
         } else {
             result = instruction.cpu.get(register);
         }
@@ -1649,82 +1753,90 @@ export class OpcodesCB {
 
         if ((instruction.opcode & 0x7) === 6) {
             instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
+
+            instruction.cpu.cycle(4);
         } else {
             instruction.cpu.set(register, result);
         }
+
+        instruction.cpu.cycle(4);
     }
 
-    @Opcode(0xC0, 8, "CB SET 0,B", OpcodeType.CB)
-    @Opcode(0xC1, 8, "CB SET 0,C", OpcodeType.CB)
-    @Opcode(0xC2, 8, "CB SET 0,D", OpcodeType.CB)
-    @Opcode(0xC3, 8, "CB SET 0,E", OpcodeType.CB)
-    @Opcode(0xC4, 8, "CB SET 0,H", OpcodeType.CB)
-    @Opcode(0xC5, 8, "CB SET 0,L", OpcodeType.CB)
-    @Opcode(0xC6, 16, "CB SET 0,(HL)", OpcodeType.CB)
-    @Opcode(0xC7, 8, "CB SET 0,A", OpcodeType.CB)
-    @Opcode(0xC8, 8, "CB SET 1,B", OpcodeType.CB)
-    @Opcode(0xC9, 8, "CB SET 1,C", OpcodeType.CB)
-    @Opcode(0xCA, 8, "CB SET 1,D", OpcodeType.CB)
-    @Opcode(0xCB, 8, "CB SET 1,E", OpcodeType.CB)
-    @Opcode(0xCC, 8, "CB SET 1,H", OpcodeType.CB)
-    @Opcode(0xCD, 8, "CB SET 1,L", OpcodeType.CB)
-    @Opcode(0xCE, 16, "CB SET 1,(HL)", OpcodeType.CB)
-    @Opcode(0xCF, 8, "CB SET 1,A", OpcodeType.CB)
-    @Opcode(0xD0, 8, "CB SET 2,B", OpcodeType.CB)
-    @Opcode(0xD1, 8, "CB SET 2,C", OpcodeType.CB)
-    @Opcode(0xD2, 8, "CB SET 2,D", OpcodeType.CB)
-    @Opcode(0xD3, 8, "CB SET 2,E", OpcodeType.CB)
-    @Opcode(0xD4, 8, "CB SET 2,H", OpcodeType.CB)
-    @Opcode(0xD5, 8, "CB SET 2,L", OpcodeType.CB)
-    @Opcode(0xD6, 16, "CB SET 2,(HL)", OpcodeType.CB)
-    @Opcode(0xD7, 8, "CB SET 2,A", OpcodeType.CB)
-    @Opcode(0xD8, 8, "CB SET 3,B", OpcodeType.CB)
-    @Opcode(0xD9, 8, "CB SET 3,C", OpcodeType.CB)
-    @Opcode(0xDA, 8, "CB SET 3,D", OpcodeType.CB)
-    @Opcode(0xDB, 8, "CB SET 3,E", OpcodeType.CB)
-    @Opcode(0xDC, 8, "CB SET 3,H", OpcodeType.CB)
-    @Opcode(0xDD, 8, "CB SET 3,L", OpcodeType.CB)
-    @Opcode(0xDE, 16, "CB SET 3,(HL)", OpcodeType.CB)
-    @Opcode(0xDF, 8, "CB SET 3,A", OpcodeType.CB)
-    @Opcode(0xE0, 8, "CB SET 4,B", OpcodeType.CB)
-    @Opcode(0xE1, 8, "CB SET 4,C", OpcodeType.CB)
-    @Opcode(0xE2, 8, "CB SET 4,D", OpcodeType.CB)
-    @Opcode(0xE3, 8, "CB SET 4,E", OpcodeType.CB)
-    @Opcode(0xE4, 8, "CB SET 4,H", OpcodeType.CB)
-    @Opcode(0xE5, 8, "CB SET 4,L", OpcodeType.CB)
-    @Opcode(0xE6, 16, "CB SET 4,(HL)", OpcodeType.CB)
-    @Opcode(0xE7, 8, "CB SET 4,A", OpcodeType.CB)
-    @Opcode(0xE8, 8, "CB SET 5,B", OpcodeType.CB)
-    @Opcode(0xE9, 8, "CB SET 5,C", OpcodeType.CB)
-    @Opcode(0xEA, 8, "CB SET 5,D", OpcodeType.CB)
-    @Opcode(0xEB, 8, "CB SET 5,E", OpcodeType.CB)
-    @Opcode(0xEC, 8, "CB SET 5,H", OpcodeType.CB)
-    @Opcode(0xED, 8, "CB SET 5,L", OpcodeType.CB)
-    @Opcode(0xEE, 16, "CB SET 5,(HL)", OpcodeType.CB)
-    @Opcode(0xEF, 8, "CB SET 5,A", OpcodeType.CB)
-    @Opcode(0xF0, 8, "CB SET 6,B", OpcodeType.CB)
-    @Opcode(0xF1, 8, "CB SET 6,C", OpcodeType.CB)
-    @Opcode(0xF2, 8, "CB SET 6,D", OpcodeType.CB)
-    @Opcode(0xF3, 8, "CB SET 6,E", OpcodeType.CB)
-    @Opcode(0xF4, 8, "CB SET 6,H", OpcodeType.CB)
-    @Opcode(0xF5, 8, "CB SET 6,L", OpcodeType.CB)
-    @Opcode(0xF6, 16, "CB SET 6,(HL)", OpcodeType.CB)
-    @Opcode(0xF7, 8, "CB SET 6,A", OpcodeType.CB)
-    @Opcode(0xF8, 8, "CB SET 7,B", OpcodeType.CB)
-    @Opcode(0xF9, 8, "CB SET 7,C", OpcodeType.CB)
-    @Opcode(0xFA, 8, "CB SET 7,D", OpcodeType.CB)
-    @Opcode(0xFB, 8, "CB SET 7,E", OpcodeType.CB)
-    @Opcode(0xFC, 8, "CB SET 7,H", OpcodeType.CB)
-    @Opcode(0xFD, 8, "CB SET 7,L", OpcodeType.CB)
-    @Opcode(0xFE, 16, "CB SET 7,(HL)", OpcodeType.CB)
-    @Opcode(0xFF, 8, "CB SET 7,A", OpcodeType.CB)
+    @Opcode(0xC0, 0, "CB SET 0,B", OpcodeType.CB)
+    @Opcode(0xC1, 0, "CB SET 0,C", OpcodeType.CB)
+    @Opcode(0xC2, 0, "CB SET 0,D", OpcodeType.CB)
+    @Opcode(0xC3, 0, "CB SET 0,E", OpcodeType.CB)
+    @Opcode(0xC4, 0, "CB SET 0,H", OpcodeType.CB)
+    @Opcode(0xC5, 0, "CB SET 0,L", OpcodeType.CB)
+    @Opcode(0xC6, 0, "CB SET 0,(HL)", OpcodeType.CB)
+    @Opcode(0xC7, 0, "CB SET 0,A", OpcodeType.CB)
+    @Opcode(0xC8, 0, "CB SET 1,B", OpcodeType.CB)
+    @Opcode(0xC9, 0, "CB SET 1,C", OpcodeType.CB)
+    @Opcode(0xCA, 0, "CB SET 1,D", OpcodeType.CB)
+    @Opcode(0xCB, 0, "CB SET 1,E", OpcodeType.CB)
+    @Opcode(0xCC, 0, "CB SET 1,H", OpcodeType.CB)
+    @Opcode(0xCD, 0, "CB SET 1,L", OpcodeType.CB)
+    @Opcode(0xCE, 0, "CB SET 1,(HL)", OpcodeType.CB)
+    @Opcode(0xCF, 0, "CB SET 1,A", OpcodeType.CB)
+    @Opcode(0xD0, 0, "CB SET 2,B", OpcodeType.CB)
+    @Opcode(0xD1, 0, "CB SET 2,C", OpcodeType.CB)
+    @Opcode(0xD2, 0, "CB SET 2,D", OpcodeType.CB)
+    @Opcode(0xD3, 0, "CB SET 2,E", OpcodeType.CB)
+    @Opcode(0xD4, 0, "CB SET 2,H", OpcodeType.CB)
+    @Opcode(0xD5, 0, "CB SET 2,L", OpcodeType.CB)
+    @Opcode(0xD6, 0, "CB SET 2,(HL)", OpcodeType.CB)
+    @Opcode(0xD7, 0, "CB SET 2,A", OpcodeType.CB)
+    @Opcode(0xD8, 0, "CB SET 3,B", OpcodeType.CB)
+    @Opcode(0xD9, 0, "CB SET 3,C", OpcodeType.CB)
+    @Opcode(0xDA, 0, "CB SET 3,D", OpcodeType.CB)
+    @Opcode(0xDB, 0, "CB SET 3,E", OpcodeType.CB)
+    @Opcode(0xDC, 0, "CB SET 3,H", OpcodeType.CB)
+    @Opcode(0xDD, 0, "CB SET 3,L", OpcodeType.CB)
+    @Opcode(0xDE, 0, "CB SET 3,(HL)", OpcodeType.CB)
+    @Opcode(0xDF, 0, "CB SET 3,A", OpcodeType.CB)
+    @Opcode(0xE0, 0, "CB SET 4,B", OpcodeType.CB)
+    @Opcode(0xE1, 0, "CB SET 4,C", OpcodeType.CB)
+    @Opcode(0xE2, 0, "CB SET 4,D", OpcodeType.CB)
+    @Opcode(0xE3, 0, "CB SET 4,E", OpcodeType.CB)
+    @Opcode(0xE4, 0, "CB SET 4,H", OpcodeType.CB)
+    @Opcode(0xE5, 0, "CB SET 4,L", OpcodeType.CB)
+    @Opcode(0xE6, 0, "CB SET 4,(HL)", OpcodeType.CB)
+    @Opcode(0xE7, 0, "CB SET 4,A", OpcodeType.CB)
+    @Opcode(0xE8, 0, "CB SET 5,B", OpcodeType.CB)
+    @Opcode(0xE9, 0, "CB SET 5,C", OpcodeType.CB)
+    @Opcode(0xEA, 0, "CB SET 5,D", OpcodeType.CB)
+    @Opcode(0xEB, 0, "CB SET 5,E", OpcodeType.CB)
+    @Opcode(0xEC, 0, "CB SET 5,H", OpcodeType.CB)
+    @Opcode(0xED, 0, "CB SET 5,L", OpcodeType.CB)
+    @Opcode(0xEE, 0, "CB SET 5,(HL)", OpcodeType.CB)
+    @Opcode(0xEF, 0, "CB SET 5,A", OpcodeType.CB)
+    @Opcode(0xF0, 0, "CB SET 6,B", OpcodeType.CB)
+    @Opcode(0xF1, 0, "CB SET 6,C", OpcodeType.CB)
+    @Opcode(0xF2, 0, "CB SET 6,D", OpcodeType.CB)
+    @Opcode(0xF3, 0, "CB SET 6,E", OpcodeType.CB)
+    @Opcode(0xF4, 0, "CB SET 6,H", OpcodeType.CB)
+    @Opcode(0xF5, 0, "CB SET 6,L", OpcodeType.CB)
+    @Opcode(0xF6, 0, "CB SET 6,(HL)", OpcodeType.CB)
+    @Opcode(0xF7, 0, "CB SET 6,A", OpcodeType.CB)
+    @Opcode(0xF8, 0, "CB SET 7,B", OpcodeType.CB)
+    @Opcode(0xF9, 0, "CB SET 7,C", OpcodeType.CB)
+    @Opcode(0xFA, 0, "CB SET 7,D", OpcodeType.CB)
+    @Opcode(0xFB, 0, "CB SET 7,E", OpcodeType.CB)
+    @Opcode(0xFC, 0, "CB SET 7,H", OpcodeType.CB)
+    @Opcode(0xFD, 0, "CB SET 7,L", OpcodeType.CB)
+    @Opcode(0xFE, 0, "CB SET 7,(HL)", OpcodeType.CB)
+    @Opcode(0xFF, 0, "CB SET 7,A", OpcodeType.CB)
     public static SET_0xC0(instruction: Instruction): void {
+        instruction.cpu.cycle(4);
+
         const register = instruction.cpu.readByteRegisterType(instruction.opcode);
         const bit = (instruction.opcode & 0b00111000) >> 3;
 
         let result = 0;
         if ((instruction.opcode & 0x7) === 6) {
             result = instruction.cpu.MMU.read8(instruction.cpu.get("HL"));
+
+            instruction.cpu.cycle(4);
         } else {
             result = instruction.cpu.get(register);
         }
@@ -1733,8 +1845,12 @@ export class OpcodesCB {
 
         if ((instruction.opcode & 0x7) === 6) {
             instruction.cpu.MMU.write8(instruction.cpu.get("HL"), result);
+
+            instruction.cpu.cycle(4);
         } else {
             instruction.cpu.set(register, result);
         }
+
+        instruction.cpu.cycle(4);
     }
 }

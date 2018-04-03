@@ -1,16 +1,45 @@
 import { MemoryController, Memory } from "../memory";
 
+enum TimeKey {
+    Second = 0x08,
+    Minute = 0x09,
+    Hour = 0x0A,
+    DayLower = 0x0B,
+    DayUpper = 0x0C
+}
+
 export class MBC3 implements MemoryController {
     private _mmu: Memory;
     private _romBankNumber: number;
     private _ramBankNumber: number;
     private _ramEnabled: boolean;
+    private _clockRegister: number;
+    private _latchedTime: { [key: number]: number };
+
+    private _latchClockData: number;
 
     constructor(mmu: Memory) {
         this._mmu = mmu;
         this._romBankNumber = 1;
         this._ramBankNumber = 1;
         this._ramEnabled = false;
+        this._clockRegister = 0;
+
+        this._latchedTime = [];
+        this.latchClock();
+
+        this._latchClockData = -1;
+    }
+
+    private latchClock(): void {
+        const time = new Date();
+
+        this._latchedTime[TimeKey.Second] = (time.getSeconds() + 40) % 0x3C;
+        this._latchedTime[TimeKey.Minute] = (time.getMinutes() + 40) % 0x3C;
+        this._latchedTime[TimeKey.Hour] = (time.getHours() + 12) % 0x18;
+        this._latchedTime[TimeKey.DayLower] = 0;
+        this._latchedTime[TimeKey.DayUpper] &= ~0x1;
+        this._latchedTime[TimeKey.DayUpper] &= ~(1 << 7);
     }
 
     read(position: number): number {
@@ -25,8 +54,10 @@ export class MBC3 implements MemoryController {
 
             case 0xA000:
             case 0xB000:
-                if (this._ramEnabled) {
+                if (this._ramEnabled && this._clockRegister === 0) {
                     return this._mmu.readRam8((position - 0xA000) + (this._ramBankNumber * 0x2000));
+                } else if (this._clockRegister !== 0) {
+                    return this._latchedTime[this._clockRegister];
                 }
                 return 0xFF;
 
@@ -57,20 +88,27 @@ export class MBC3 implements MemoryController {
             case 0x5000:
                 if (value <= 0x03) {
                     this._ramBankNumber = value & 0x03;
+                    this._clockRegister = 0;
                 } else {
-                    // console.log(`CLOCK REGISTER SELECT: ${value.toString(16)}`);
+                    this._clockRegister = value;
                 }
                 return;
 
             case 0x6000:
             case 0x7000:
-                // console.log(`LATCH CLOCK DATA = ${value.toString(16)}`);
+                if (value === 1 && this._latchClockData === 0) {
+                    this.latchClock();
+                }
+
+                this._latchClockData = value;
                 return;
 
             case 0xA000:
             case 0xB000:
-                if (this._ramEnabled) {
+                if (this._ramEnabled && this._clockRegister === 0) {
                     this._mmu.writeRam8((position - 0xA000) + (this._ramBankNumber * 0x2000), value);
+                } else if (this._clockRegister !== 0) {
+                    this._latchedTime[this._clockRegister] = value;
                 }
                 return;
 

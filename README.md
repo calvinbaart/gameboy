@@ -3,10 +3,11 @@ Gameboy (and GBC) emulator written in Typescript
 
 ## Status:
 - All opcodes are implemented and deemed correct by Blargg tests
-- Gameboy and GBC rendering are fully implemented
+- We also pass the instr_timing and mem_timing / mem_timing_2 tests from Blargg
+- Gameboy and GBC rendering is fully implemented
 - MBC1 and MBC5 are fully implemented
 - MBC3 is partially implemented
-- Audio is unimplemented
+- Audio is unimplemented (we pass the first test for the register setup of Blargg)
 
 ## Screenshots:
 

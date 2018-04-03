@@ -236,7 +236,10 @@ export class CPU {
             CPU.onInstruction(this, instruction);
         }
 
-        this._tickInternal(instruction.ticks);
+        if (instruction.ticks !== 0) {
+            this._tickInternal(instruction.ticks);
+        }
+        
         return true;
     }
 
@@ -548,6 +551,10 @@ export class CPU {
         tmp -= num;
 
         return this.set(register, tmp);
+    }
+
+    public cycle(numCycles: number): void {
+        this._tickInternal(numCycles);
     }
 
     get enableInterrupts() {
