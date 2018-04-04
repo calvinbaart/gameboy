@@ -220,6 +220,7 @@ export class CPU {
         if (this._waitForInterrupt) {
             this._cycles += 4;
             this._tickInternal(4);
+            this.checkInterrupt();
 
             if (this._waitForInterrupt) {
                 return true;
@@ -239,7 +240,8 @@ export class CPU {
         if (instruction.ticks !== 0) {
             this._tickInternal(instruction.ticks);
         }
-        
+
+        this.checkInterrupt();
         return true;
     }
 
@@ -250,7 +252,6 @@ export class CPU {
         this._memory.tick(cycles);
         this._timer.tick(cycles);
         this._tickInput(cycles);
-        this.checkInterrupt();
     }
 
     public readu8(): number {

@@ -410,7 +410,7 @@ export class Video {
 
                 let color: Color | null = null;
                 if (!this.gbcMode) {
-                    color = this._getColor(sprite.palette, colorNum, true);
+                    color = this._getColor(this._registers[sprite.palette], colorNum, true);
                 } else {
                     color = this._getColorGBC(sprite.colorPalette, colorNum, false);
                 }    
@@ -732,7 +732,7 @@ export class Video {
                 this._sprites[sprite].flipX = data & (1 << 5) ? true : false;
                 this._sprites[sprite].flipY = data & (1 << 6) ? true : false;
                 this._sprites[sprite].colorPalette = data & 0x07;
-                this._sprites[sprite].palette = data & (1 << 4) ? this._registers[VideoRegister.OBP1] : this._registers[VideoRegister.OBP0];
+                this._sprites[sprite].palette = data & (1 << 4) ? VideoRegister.OBP1 : VideoRegister.OBP0;
                 this._sprites[sprite].priority = (data & (1 << 7)) !== 0;
                 break;
         }
