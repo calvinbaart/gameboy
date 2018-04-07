@@ -71,12 +71,16 @@ export class Memory
         this._vramBank = 0;
         this._controller = null;
 
-        this.addRegister(0xFF50, () => 0, (x) => {
+        this.addRegister(0xFF50, () => 0xFF, (x) => {
             this._biosEnabled = false;
             this._cpu._inBootstrap = false;
         });
 
         this.addRegister(0xFF70, () => {
+            if (!this._cpu.gbcMode) {
+                return 0xFF;
+            }
+
             return 0x40 | (this._wramBank & 0x07);
         }, (x) => {
             this._wramBank = x & 0x07;
@@ -87,7 +91,11 @@ export class Memory
         });
 
         this.addRegister(0xFF4F, () => {
-            return this._vramBank & 0x01;
+            if (!this._cpu.gbcMode) {
+                return 0xFF;
+            }
+
+            return this._vramBank & 0x1;
         }, (x) => {
             this._vramBank = x & 0x01;
         });

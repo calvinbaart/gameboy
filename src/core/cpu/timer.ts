@@ -81,7 +81,7 @@ export class Timer
     }
 
     private _readTAC(): number {
-        return this._tac;
+        return this._tac | 0b11111000;
     }
 
     private _readDIV(): number {

@@ -9,6 +9,7 @@ import { SpecialRegister, Register } from "./register";
 import { Flags } from "./flags";
 import { Interrupt } from "./interrupt";
 import { Key } from "./key";
+import { Network } from "../network";
 
 export type RegisterType = "A" | "B" | "C" | "D" | "E" | "F" | "H" | "L" | "AF" | "SP" | "PC" | "BC" | "DE" | "HL";
 
@@ -38,6 +39,11 @@ export class CPU {
     // Input
     private _joypadState: number;
 
+    // Serial
+    private _serialStarted: boolean;
+    private _serialClock: number;
+    private _network: Network;
+
     // Other
     private _gbcModeRaw: number;
     private _gbcMode: boolean;
@@ -66,6 +72,10 @@ export class CPU {
         this._cycles = 0;
         this._romName = "";
 
+        this._serialStarted = false;
+        this._serialClock = 0;
+        this._network = new Network();
+
         this._memory.addRegister(0xFF00, this._registerRead.bind(this, SpecialRegister.P1),    this._registerWrite.bind(this, SpecialRegister.P1));
         this._memory.addRegister(0xFF01, this._registerRead.bind(this, SpecialRegister.SB),    this._registerWrite.bind(this, SpecialRegister.SB));
         this._memory.addRegister(0xFF02, this._registerRead.bind(this, SpecialRegister.SC),    this._registerWrite.bind(this, SpecialRegister.SC));
@@ -80,7 +90,6 @@ export class CPU {
             console.log(`GBCMODE = ${this._gbcMode ? "true" : "false"}`);
         });
 
-        // this._memory.addRegister(0xFF74, () => 0xFE, (x) => { });
         this._gbcMode = false;
         this._gbcModeRaw = 0x00;
         this._inBootstrap = true;
@@ -109,6 +118,67 @@ export class CPU {
         this._joypadState = 0xFF;
 
         this.P1 = 0xFF;
+
+        // Unused registers
+        this._memory.addRegister(0xFF03, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF08, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF09, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF0A, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF0B, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF0C, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF0D, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF0E, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF15, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF1F, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF27, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF28, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF29, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF2A, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF2B, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF2C, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF2D, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF2E, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF2F, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF4C, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF4D, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF4E, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF56, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF57, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF58, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF59, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF5A, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF5B, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF5C, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF5D, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF5E, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF5F, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF60, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF61, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF62, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF63, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF64, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF65, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF66, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF67, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF6C, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF6D, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF6E, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF6F, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF71, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF72, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF73, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF74, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF75, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF76, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF77, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF78, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF79, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF7A, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF7B, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF7C, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF7D, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF7E, () => 0xFF, () => { });
+        this._memory.addRegister(0xFF7F, () => 0xFF, () => { });
     }
 
     private _registerRead(register: SpecialRegister): number {
@@ -150,6 +220,18 @@ export class CPU {
                     } else {
                         this._debugString += String.fromCharCode(this._specialRegisters[SpecialRegister.SB]);
                     }
+                } else {
+                    if (!this._serialStarted && this._network.isConnected()) {
+                        this._serialStarted = (val & (1 << 7)) ? true : false;
+                        this._serialClock = (val & (1 << 0)) ? 1 : 0;
+                    }
+                }
+                break;
+            
+            case SpecialRegister.SB:
+                if (this._serialStarted && this._network.isConnected()) {
+                    this._network.write(val);
+                    this._specialRegisters[SpecialRegister.SB] = this._network.read();
                 }
                 break;
         }
@@ -580,6 +662,10 @@ export class CPU {
 
     get Display() {
         return this._display;
+    }
+
+    get audio() {
+        return this._audio;
     }
 
     get cycles() {

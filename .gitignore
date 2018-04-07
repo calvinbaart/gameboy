@@ -2,6 +2,8 @@
 /dist/bios/*.bin
 /dist/roms/*.gb
 /dist/roms/*.gbc
+/dist/roms/dmg
+/dist/roms/mooneye
 /node_modules
 /docs
 dist/scripts/main.js

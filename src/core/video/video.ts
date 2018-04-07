@@ -3,26 +3,11 @@ import { ColorPalette, Color } from "./color";
 import { VideoRegister } from "./videoregister";
 import { VideoMode } from "./videomode";
 import { Interrupt } from "../cpu/interrupt";
+import { Sprite } from "./sprite";
 
 const GameboyColorPalette = [
     0xEB, 0xC4, 0x60, 0x00
 ];
-
-interface ISprite {
-    x: number;
-    y: number;
-    tile: number;
-    flags: number;
-
-    vram: number;
-    flipX: boolean;
-    flipY: boolean;
-
-    colorPalette: number;
-    palette: number;
-
-    priority: boolean;
-}
 
 export class Video {
     private _cpu: CPU;
@@ -48,7 +33,7 @@ export class Video {
     private _hdmaMode: number;
     private _hdmaStatus: number;
 
-    private _sprites: ISprite[];
+    private _sprites: Sprite[];
 
     public static setupWindow: (display: Video) => void;
     public static render: (display: Video) => void;
@@ -653,7 +638,19 @@ export class Video {
     }
 
     private _readRegister(register: VideoRegister): number {
-        return this._registers[register];
+        if (register >= VideoRegister.BCPS && !this._cpu.gbcMode) {
+            return 0xFF;
+        }
+
+        let val = this._registers[register];
+
+        switch (register) {
+            case VideoRegister.STAT:
+                val |= 0b10000000;
+                break;
+        }
+
+        return val;
     }
 
     private _writeRegister(register: VideoRegister, value: number): void {
@@ -703,6 +700,9 @@ export class Video {
                     this.hdmaInProgress = true;
                     this.hdmaLength = value & 0b01111111;
                 }
+                return;
+            
+            case VideoRegister.LY:
                 return;
         }
 

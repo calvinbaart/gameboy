@@ -16,10 +16,10 @@ export function createLoop(nextFrame: (func: any) => void, global: any) {
             return;
         }
 
-        let cycles = Math.floor(((4194304 * 3) / 1000.0) * delta);
+        let cycles = Math.floor(((4194304 * 2.4) / 1000.0) * delta);
 
-        if (cycles >= (Math.floor(4194304 / 60) * 3)) {
-            cycles = Math.floor(4194304 / 60) * 3;
+        if (cycles >= (Math.floor(4194304 / 60) * 2.4)) {
+            cycles = Math.floor(4194304 / 60) * 2.4;
         }
 
         if (stopEmulation) {

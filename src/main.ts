@@ -5,6 +5,7 @@ import { SaveManager } from "./browser/savemanager";
 import { Input } from "./browser/input";
 import { Render } from "./browser/render";
 import { Storage } from "./browser/storage";
+import { BrowserAudio } from "./browser/audio";
 
 const bios = require("../file-loader.js!../dist/bios/gbc_bios.bin");
 
@@ -15,6 +16,7 @@ Render.setup();
 Storage.setup();
 Input.setup();
 SaveManager.setup();
+BrowserAudio.setup();
 
 (document.getElementById("load") as HTMLElement).onclick = () => {
     (document.getElementById("loadFile") as HTMLInputElement).click();
